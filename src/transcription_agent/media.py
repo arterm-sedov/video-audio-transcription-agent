@@ -90,7 +90,10 @@ def create_chunks(
     ffmpeg = ffmpeg_binary()
     result = []
     for chunk in chunks:
-        output = destination / f"chunk_{chunk.index:04d}_{int(chunk.start):08d}.mp4"
+        extension = ".mp4" if info.has_video else ".m4a"
+        output = (
+            destination / f"chunk_{chunk.index:04d}_{int(chunk.start):08d}{extension}"
+        )
         duration = chunk.end - chunk.start
         command = [
             ffmpeg,
@@ -103,21 +106,23 @@ def create_chunks(
             str(source),
             "-t",
             str(duration),
-            "-vf",
-            "scale=960:-2,fps=2",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "28",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-y",
-            str(output),
         ]
+        if info.has_video:
+            command.extend(
+                [
+                    "-vf",
+                    "scale=960:-2,fps=2",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "28",
+                ]
+            )
+        else:
+            command.append("-vn")
+        command.extend(["-c:a", "aac", "-b:a", "96k", "-y", str(output)])
         subprocess.run(command, check=True)
         result.append((chunk, output))
     return info, tuple(result)

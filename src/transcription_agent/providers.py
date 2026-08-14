@@ -6,6 +6,7 @@ import os
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol
 
 from .costs import Usage, normalize_usage
@@ -48,17 +49,29 @@ class OpenAICompatibleProvider:
             raw = source.read()
 
         mime = mimetypes.guess_type(media_path)[0] or "video/mp4"
-        data_url = f"data:{mime};base64,{base64.b64encode(raw).decode()}"
+        encoded = base64.b64encode(raw).decode()
         client = OpenAI(api_key=api_key, base_url=self.base_url)
+        if mime.startswith("audio/"):
+            audio_format = Path(media_path).suffix.lstrip(".") or "m4a"
+            content = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": encoded, "format": audio_format},
+                },
+            ]
+        else:
+            data_url = f"data:{mime};base64,{encoded}"
+            content = [
+                {"type": "text", "text": prompt},
+                {"type": "video_url", "video_url": {"url": data_url}},
+            ]
         response = client.chat.completions.create(
             model=self.model,
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "video_url", "video_url": {"url": data_url}},
-                    ],
+                    "content": content,
                 }
             ],
         )

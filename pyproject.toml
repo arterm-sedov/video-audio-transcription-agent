@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "video-audio-transcription-agent"
+version = "0.1.0"
+description = "Focused video and audio transcription agent with speaker attribution."
+requires-python = ">=3.12"
+dependencies = ["python-dotenv>=1.0"]
+
+[project.optional-dependencies]
+providers = ["google-genai>=1.0", "openai>=1.0"]
+ui = ["gradio>=5.0"]
+media = ["av>=12.0", "imageio-ffmpeg>=0.6"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.8"]
+
+[project.scripts]
+transcription-agent = "transcription_agent.cli:main"
+transcription-agent-ui = "transcription_agent.app:build_demo"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/transcription_agent"]

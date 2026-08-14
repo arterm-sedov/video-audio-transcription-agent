@@ -1,5 +1,6 @@
 """Optional Gradio interface for Hugging Face Spaces and local use."""
 
+import logging
 from pathlib import Path
 
 from .config import Settings
@@ -8,6 +9,8 @@ from .media import create_chunks
 from .orchestrator import TranscriptionService
 from .progress import ProgressEvent
 from .registry import JobRegistry
+
+logger = logging.getLogger(__name__)
 
 
 def transcribe_upload(
@@ -49,7 +52,8 @@ def transcribe_upload(
         registry.update(job_id, "completed")
     except Exception as exc:
         registry.update(job_id, "failed", str(exc))
-        raise
+        logger.exception("Transcription job %s failed", job_id)
+        return f"## Transcription failed\n\n`{exc}`\n\nJob ID: `{job_id}`", []
     markdown = outputs["markdown"].read_text(encoding="utf-8")
     from .artifacts import build_artifact_zip
 

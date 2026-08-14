@@ -13,11 +13,21 @@ from .registry import JobRegistry
 logger = logging.getLogger(__name__)
 
 
-def transcribe_upload(file_path: str, provider: str, diarization: bool, progress=None):
+MODEL_CHOICES = [
+    "google/gemini-2.5-flash",
+    "google/gemini-3-flash-preview",
+    "google/gemini-3.1-pro-preview",
+    "qwen/qwen3.6-plus",
+]
+
+
+def transcribe_upload(
+    file_path: str, provider: str, model: str, diarization: bool, progress=None
+):
     settings = Settings.from_env()
     settings = settings.__class__(
         provider_order=(provider.strip(),),
-        model=settings.model,
+        model=model.strip() or settings.model,
         chunk_seconds=settings.chunk_seconds,
         output_dir=settings.output_dir,
         database_path=settings.database_path,
@@ -75,6 +85,11 @@ def build_demo():
             value="polza",
             label="Provider",
         )
+        model = gr.Dropdown(
+            choices=MODEL_CHOICES,
+            value=MODEL_CHOICES[0],
+            label="Model",
+        )
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"
         )
@@ -83,7 +98,7 @@ def build_demo():
         outputs = gr.Files(label="Downloads")
         run.click(
             transcribe_upload,
-            inputs=[upload, provider, diarization],
+            inputs=[upload, provider, model, diarization],
             outputs=[transcript, outputs],
             api_visibility="private",
             concurrency_limit=1,

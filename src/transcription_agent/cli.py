@@ -19,6 +19,11 @@ def main(argv: list[str] | None = None) -> int:
     transcribe = subparsers.add_parser("transcribe")
     transcribe.add_argument("media")
     transcribe.add_argument("--provider-order")
+    transcribe.add_argument(
+        "--model",
+        default=None,
+        help="Model id, e.g. google/gemini-2.5-flash or qwen/qwen3.6-plus",
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -33,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
         settings = replace(
             settings, provider_order=tuple(args.provider_order.split(","))
         )
+    if args.model:
+        settings = replace(settings, model=args.model)
     settings.validate()
     source = resolve_source(args.media, settings.output_dir / "inputs")
     registry = JobRegistry(settings.database_path)

@@ -13,14 +13,10 @@ from .registry import JobRegistry
 logger = logging.getLogger(__name__)
 
 
-def transcribe_upload(
-    file_path: str, provider_order: str, diarization: bool, progress=None
-):
+def transcribe_upload(file_path: str, provider: str, diarization: bool, progress=None):
     settings = Settings.from_env()
     settings = settings.__class__(
-        provider_order=tuple(
-            item.strip() for item in provider_order.split(",") if item.strip()
-        ),
+        provider_order=(provider.strip(),),
         model=settings.model,
         chunk_seconds=settings.chunk_seconds,
         output_dir=settings.output_dir,
@@ -28,6 +24,7 @@ def transcribe_upload(
         diarization_enabled=diarization,
         max_output_tokens=settings.max_output_tokens,
     )
+    settings.validate()
     registry = JobRegistry(settings.database_path)
     job_id = registry.create(file_path, settings.provider_order[0], settings.model)
 
@@ -73,7 +70,11 @@ def build_demo():
     with gr.Blocks(title="Video and Audio Transcription") as demo:
         gr.Markdown("# Video and Audio Transcription")
         upload = gr.File(type="filepath", label="Video or audio")
-        provider = gr.Textbox(value="polza,gemini,openrouter", label="Provider order")
+        provider = gr.Dropdown(
+            choices=["polza", "gemini", "openrouter"],
+            value="polza",
+            label="Provider",
+        )
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"
         )

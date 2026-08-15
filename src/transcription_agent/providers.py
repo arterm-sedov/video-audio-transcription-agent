@@ -91,6 +91,7 @@ class GeminiProvider:
     model: str = "gemini-2.5-flash"
     poll_seconds: float = 2.0
     poll_attempts: int = 40
+    timeout_seconds: float = 300.0
 
     def transcribe(self, media_path: str, prompt: str) -> str:
         try:
@@ -103,7 +104,9 @@ class GeminiProvider:
         api_key = os.getenv("GEMINI_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Missing GEMINI_KEY or GEMINI_API_KEY")
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=api_key, http_options={"timeout": self.timeout_seconds * 1000}
+        )
         uploaded = client.files.upload(file=media_path)
         active = None
         try:

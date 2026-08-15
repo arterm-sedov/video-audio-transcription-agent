@@ -61,14 +61,14 @@ uv run transcription-agent models --provider gemini
 
 The default provider order is `polza,gemini,openrouter`. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
 
-## Network routing note
+## Provider routing by IP region
 
-Provider reachability depends on the active network path:
+Provider reachability depends on the IP region the request egresses from:
 
-- **Polza** works without a VPN and can fail (connection timeouts) while a VPN is active.
-- **OpenRouter** and **Gemini** require the VPN exit that reaches them and fail with `403` / `400 User location is not supported` when it is off.
+- **Polza** prefers Russian customer IPs and rejects VPN exits (connection timeouts while a VPN is active).
+- **OpenRouter** and **Gemini** allow only non-Russian IPs — reachable over a VPN, or natively from non-Russian hosting such as Hugging Face Spaces — and fail with `403` / `400 User location is not supported` from a Russian IP.
 
-The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable in the current network state. If both paths are needed, switch the network route between runs.
+The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable from the current egress IP. On Hugging Face Spaces, OpenRouter and Gemini are the natural choices; on a Russian-local host without VPN, Polza is the natural choice.
 
 ## Skill
 

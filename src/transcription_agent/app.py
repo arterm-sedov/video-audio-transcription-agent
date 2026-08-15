@@ -113,7 +113,10 @@ def build_demo():
             concurrency_id="transcription_jobs",
         )
         provider.change(
-            lambda value: (list(model_choices_for(value)), model_choices_for(value)[0]),
+            lambda value: gr.update(
+                choices=list(model_choices_for(value)),
+                value=model_choices_for(value)[0],
+            ),
             inputs=provider,
             outputs=[model],
             api_visibility="private",

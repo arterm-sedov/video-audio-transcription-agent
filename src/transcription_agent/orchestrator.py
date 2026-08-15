@@ -35,8 +35,12 @@ class TranscriptionService:
     def __init__(self, settings: Settings):
         settings.validate()
         self.settings = settings
+        proxies = {
+            provider: settings.provider_proxy(provider)
+            for provider in settings.provider_order
+        }
         self.providers = configured_providers(
-            settings.model, settings.provider_order, settings.proxy
+            settings.model, settings.provider_order, proxies
         )
 
     def transcribe_clips(

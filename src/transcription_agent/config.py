@@ -22,6 +22,9 @@ class Settings:
     diarization_enabled: bool = True
     max_output_tokens: int = 8192
     proxy: str = ""
+    polza_proxy: str = ""
+    openrouter_proxy: str = ""
+    gemini_proxy: str = ""
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = ".env") -> "Settings":
@@ -51,7 +54,19 @@ class Settings:
             in {"1", "true", "yes", "on"},
             max_output_tokens=int(os.getenv("TRANSCRIPTION_MAX_OUTPUT_TOKENS", "8192")),
             proxy=os.getenv("TRANSCRIPTION_PROXY", "").strip(),
+            polza_proxy=os.getenv("TRANSCRIPTION_POLZA_PROXY", "").strip(),
+            openrouter_proxy=os.getenv("TRANSCRIPTION_OPENROUTER_PROXY", "").strip(),
+            gemini_proxy=os.getenv("TRANSCRIPTION_GEMINI_PROXY", "").strip(),
         )
+
+    def provider_proxy(self, provider: str) -> str:
+        """Per-provider proxy; falls back to the global proxy when unset."""
+        per_provider = {
+            "polza": self.polza_proxy,
+            "openrouter": self.openrouter_proxy,
+            "gemini": self.gemini_proxy,
+        }.get(provider.strip().lower(), "")
+        return per_provider or self.proxy
 
     def validate(self) -> None:
         supported = {"polza", "gemini", "openrouter"}

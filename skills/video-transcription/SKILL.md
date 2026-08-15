@@ -11,4 +11,4 @@ Outputs are Markdown, JSON, SRT, and VTT. The CLI and GUI report total processin
 
 Provider routing by IP region: Polza prefers Russian customer IPs and rejects VPN exits; OpenRouter and Gemini require non-Russian IPs (VPN or hosting such as Hugging Face Spaces) and fail from Russian IPs. The provider chain retries and falls back automatically per job.
 
-Optional proxy: CLI `--proxy socks5h://host:port`, GUI field, or `TRANSCRIPTION_PROXY` env routes provider calls through an HTTP or SOCKS5 proxy (e.g. `socks5h://192.168.122.1:1080` for Polza on the corporate gateway). Both OpenAI-compatible (Polza/OpenRouter) and direct Gemini clients honor it.
+Optional proxy: set per provider via `TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROUTER_PROXY`, `TRANSCRIPTION_GEMINI_PROXY` (e.g. Polza default `socks5h://192.168.122.1:1080` on the corporate gateway). Unset values fall back to `TRANSCRIPTION_PROXY`, CLI `--proxy`, or the GUI field. Both OpenAI-compatible (Polza/OpenRouter) and direct Gemini clients honor it.

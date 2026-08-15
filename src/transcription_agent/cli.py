@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     transcribe.add_argument(
         "--proxy",
         default=None,
-        help="Optional proxy for provider calls, e.g. socks5h://192.168.122.1:1080",
+        help="Optional global fallback proxy; per-provider TRANSCRIPTION_*_PROXY wins",
     )
     args = parser.parse_args(argv)
     settings = Settings.from_env()

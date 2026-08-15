@@ -105,8 +105,8 @@ def build_demo():
         )
         proxy = gr.Textbox(
             value="",
-            label="Proxy (optional)",
-            placeholder="socks5h://host:port or http://host:port",
+            label="Proxy (optional, per-provider)",
+            placeholder="socks5h://host:port; empty = use per-provider TRANSCRIPTION_*_PROXY",
             lines=1,
         )
         diarization = gr.Checkbox(

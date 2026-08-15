@@ -191,23 +191,29 @@ def _http_client(proxy: str):
 
 
 def configured_providers(
-    model: str, order: tuple[str, ...], proxy: str = ""
+    model: str, order: tuple[str, ...], proxy: str | dict[str, str] = ""
 ) -> dict[str, Provider]:
     """Build configured provider instances without requiring optional imports."""
+    if isinstance(proxy, str):
+        proxy_map = {"polza": proxy, "openrouter": proxy, "gemini": proxy}
+    else:
+        proxy_map = proxy
     return {
         "polza": OpenAICompatibleProvider(
             "polza",
             os.getenv("POLZA_BASE_URL", "https://polza.ai/api/v1"),
             "POLZA_API_KEY",
             model,
-            proxy=proxy,
+            proxy=proxy_map.get("polza", ""),
         ),
         "openrouter": OpenAICompatibleProvider(
             "openrouter",
             os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             "OPENROUTER_API_KEY",
             model,
-            proxy=proxy,
+            proxy=proxy_map.get("openrouter", ""),
         ),
-        "gemini": GeminiProvider(model=model.removeprefix("google/"), proxy=proxy),
+        "gemini": GeminiProvider(
+            model=model.removeprefix("google/"), proxy=proxy_map.get("gemini", "")
+        ),
     }

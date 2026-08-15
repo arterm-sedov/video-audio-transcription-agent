@@ -45,7 +45,21 @@ uv run transcription-agent transcribe recording.mp4 \
   --provider-order polza,gemini,openrouter
 ```
 
-The default order is `polza,gemini,openrouter`. The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
+Select a model for one job:
+
+```bash
+uv run transcription-agent transcribe recording.mp4 \
+  --model google/gemini-3.6-flash
+```
+
+List available video-capable models with curated price ranking:
+
+```bash
+uv run transcription-agent models --provider polza
+uv run transcription-agent models --provider gemini
+```
+
+The default provider order is `polza,gemini,openrouter`. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
 
 ## Skill
 

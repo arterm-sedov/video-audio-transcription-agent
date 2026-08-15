@@ -46,6 +46,21 @@ def test_exporters_write_all_formats(tmp_path: Path) -> None:
     assert "WEBVTT" in paths["vtt"].read_text(encoding="utf-8")
 
 
+def test_export_selective_formats_and_markdown_name(tmp_path: Path) -> None:
+    transcript = merge_segments(
+        "meeting.mp4", [(0, [Segment(0, 1.5, "Speaker 1", "Hello")])]
+    )
+    paths = export_transcript(
+        transcript,
+        tmp_path,
+        formats=("markdown", "srt"),
+        markdown_name="notes.md",
+    )
+    assert set(paths) == {"markdown", "srt"}
+    assert paths["markdown"].name == "notes.md"
+    assert not (tmp_path / "meeting_transcription.json").exists()
+
+
 def test_registry_tracks_job_status(tmp_path: Path) -> None:
     registry = JobRegistry(tmp_path / "jobs.sqlite3")
     job_id = registry.create("meeting.mp4", "polza", "google/gemini-2.5-flash")

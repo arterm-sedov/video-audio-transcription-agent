@@ -38,6 +38,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional global fallback proxy; per-provider TRANSCRIPTION_*_PROXY wins",
     )
+    transcribe.add_argument(
+        "--output-md",
+        default=None,
+        help="Output Markdown filename (default: <source>_transcription.md)",
+    )
+    transcribe.add_argument(
+        "--formats",
+        default=None,
+        help="Extra formats to write: json,srt,vtt,zip (default: markdown,json,srt,vtt,zip)",
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -63,6 +73,11 @@ def main(argv: list[str] | None = None) -> int:
         settings = replace(settings, model=args.model)
     if args.proxy:
         settings = replace(settings, proxy=args.proxy)
+    export_formats = (
+        tuple(f.strip().lower() for f in args.formats.split(",") if f.strip())
+        if args.formats
+        else None
+    )
     settings.validate()
     source = resolve_source(args.media, settings.output_dir / "inputs")
     registry = JobRegistry(settings.database_path)
@@ -80,10 +95,20 @@ def main(argv: list[str] | None = None) -> int:
             prompt=args.prompt,
         )
         registry.update(job_id, "exporting")
-        paths = export_transcript(transcript, settings.output_dir)
+        paths = export_transcript(
+            transcript,
+            settings.output_dir,
+            formats=export_formats,
+            markdown_name=args.output_md,
+        )
         from .artifacts import build_artifact_zip
 
-        package = build_artifact_zip(list(paths.values()), prefix=source.stem)
+        include_zip = export_formats is None or "zip" in export_formats
+        package = (
+            build_artifact_zip(list(paths.values()), prefix=source.stem)
+            if include_zip
+            else None
+        )
         registry.update(job_id, "completed")
     except Exception as exc:
         registry.update(job_id, "failed", str(exc))

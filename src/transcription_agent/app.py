@@ -6,19 +6,12 @@ from pathlib import Path
 from .config import Settings
 from .exporters import export_transcript
 from .media import create_chunks
+from .models_catalog import model_choices_for
 from .orchestrator import TranscriptionService
 from .progress import ProgressEvent
 from .registry import JobRegistry
 
 logger = logging.getLogger(__name__)
-
-
-MODEL_CHOICES = [
-    "google/gemini-2.5-flash",
-    "google/gemini-3-flash-preview",
-    "google/gemini-3.1-pro-preview",
-    "qwen/qwen3.6-plus",
-]
 
 
 def transcribe_upload(
@@ -85,9 +78,10 @@ def build_demo():
             value="polza",
             label="Provider",
         )
+        shared_choices = model_choices_for("polza")
         model = gr.Dropdown(
-            choices=MODEL_CHOICES,
-            value=MODEL_CHOICES[0],
+            choices=list(shared_choices),
+            value=shared_choices[0],
             label="Model",
         )
         diarization = gr.Checkbox(
@@ -103,6 +97,12 @@ def build_demo():
             api_visibility="private",
             concurrency_limit=1,
             concurrency_id="transcription_jobs",
+        )
+        provider.change(
+            lambda value: (list(model_choices_for(value)), model_choices_for(value)[0]),
+            inputs=provider,
+            outputs=[model],
+            api_visibility="private",
         )
     demo.queue(default_concurrency_limit=1, status_update_rate="auto")
     return demo

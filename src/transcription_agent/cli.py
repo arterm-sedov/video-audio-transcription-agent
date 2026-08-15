@@ -8,6 +8,7 @@ from .config import Settings
 from .connectors import resolve_source
 from .exporters import export_transcript
 from .media import create_chunks
+from .models_catalog import SHARED_VIDEO_MODELS, model_choices_for
 from .orchestrator import TranscriptionService
 from .registry import JobRegistry
 
@@ -16,6 +17,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="transcription-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate-config")
+    models_parser = subparsers.add_parser("models")
+    models_parser.add_argument(
+        "--provider", default="polza", help="polza, gemini, or openrouter"
+    )
     transcribe = subparsers.add_parser("transcribe")
     transcribe.add_argument("media")
     transcribe.add_argument("--provider-order")
@@ -33,6 +38,16 @@ def main(argv: list[str] | None = None) -> int:
                 {"provider_order": settings.provider_order, "model": settings.model}
             )
         )
+        return 0
+    if args.command == "models":
+        for model_id in model_choices_for(args.provider):
+            model = next((m for m in SHARED_VIDEO_MODELS if m.id == model_id), None)
+            price = (
+                f"{model.price_per_1m_input_usd:.3f}"
+                if model and model.price_per_1m_input_usd is not None
+                else "N/A"
+            )
+            print(f"{model_id}\t{price}\t{model.note if model else ''}")
         return 0
     if args.provider_order:
         settings = replace(

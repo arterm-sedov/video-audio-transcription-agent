@@ -1680,6 +1680,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "python-dotenv" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -1709,6 +1710,7 @@ requires-dist = [
     { name = "imageio-ffmpeg", marker = "extra == 'media'", specifier = ">=0.6" },
     { name = "openai", marker = "extra == 'providers'", specifier = ">=1.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 provides-extras = ["providers", "ui", "media"]
 

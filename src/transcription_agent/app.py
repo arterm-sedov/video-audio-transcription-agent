@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def transcribe_upload(
-    file_path: str, provider: str, model: str, diarization: bool, progress=None
+    file_path: str,
+    provider: str,
+    model: str,
+    prompt: str,
+    diarization: bool,
+    progress=None,
 ):
     settings = Settings.from_env()
     settings = settings.__class__(
@@ -46,6 +51,7 @@ def transcribe_upload(
             [(chunk.start, str(path)) for chunk, path in chunks],
             duration=info.duration,
             progress=update,
+            prompt=prompt.strip() or None,
         )
         registry.update(job_id, "exporting")
         outputs = export_transcript(transcript, settings.output_dir)
@@ -84,6 +90,18 @@ def build_demo():
             value=shared_choices[0],
             label="Model",
         )
+        prompt = gr.Textbox(
+            value=(
+                "Transcribe all spoken dialogue in this video clip. "
+                "Return only a chronological transcript, one speaker turn per line, "
+                "with EXACTLY ONE turn per line and a hard newline between turns, "
+                "in this exact format: [MM:SS] Speaker: words. "
+                "Never concatenate multiple turns onto one line. "
+                "Keep speaker labels consistent using any visible active-speaker cue."
+            ),
+            label="Transcription prompt",
+            lines=3,
+        )
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"
         )
@@ -92,7 +110,7 @@ def build_demo():
         outputs = gr.Files(label="Downloads")
         run.click(
             transcribe_upload,
-            inputs=[upload, provider, model, diarization],
+            inputs=[upload, provider, model, prompt, diarization],
             outputs=[transcript, outputs],
             api_visibility="private",
             concurrency_limit=1,

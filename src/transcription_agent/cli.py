@@ -29,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Model id, e.g. google/gemini-2.5-flash or qwen/qwen3.6-plus",
     )
+    transcribe.add_argument(
+        "--prompt", default=None, help="Custom transcription prompt"
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -69,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
             str(source),
             [(chunk.start, str(path)) for chunk, path in chunks],
             duration=info.duration,
+            prompt=args.prompt,
         )
         registry.update(job_id, "exporting")
         paths = export_transcript(transcript, settings.output_dir)
@@ -81,5 +85,13 @@ def main(argv: list[str] | None = None) -> int:
         raise
     output = {key: str(value) for key, value in paths.items()}
     output.update({"zip": str(package) if package else "", "job_id": str(job_id)})
+    usage = transcript.metadata.get("usage", {})
+    output.update(
+        {
+            "total_input_tokens": usage.get("input_tokens", 0),
+            "total_output_tokens": usage.get("output_tokens", 0),
+            "total_cost_usd": usage.get("cost_usd", 0.0),
+        }
+    )
     print(json.dumps(output, indent=2))
     return 0

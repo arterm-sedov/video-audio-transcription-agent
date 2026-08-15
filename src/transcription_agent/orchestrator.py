@@ -44,6 +44,7 @@ class TranscriptionService:
         *,
         duration: float | None = None,
         progress: ProgressCallback | None = None,
+        prompt: str | None = None,
     ) -> Transcript:
         chunks: list[tuple[float, list[Segment]]] = []
         errors: list[str] = []
@@ -54,11 +55,15 @@ class TranscriptionService:
         )
         total_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
         for index, (offset, path) in enumerate(clips, 1):
-            prompt = PROMPT_TEMPLATE.format(start="relative", end="relative")
+            active_prompt = (prompt or PROMPT_TEMPLATE).format(
+                start="relative", end="relative"
+            )
             result = None
             for provider_name in self.settings.provider_order:
                 try:
-                    result = self.providers[provider_name].transcribe(path, prompt)
+                    result = self.providers[provider_name].transcribe(
+                        path, active_prompt
+                    )
                     selected_provider = provider_name
                     break
                 except Exception as exc:  # noqa: BLE001 - provider fallback boundary

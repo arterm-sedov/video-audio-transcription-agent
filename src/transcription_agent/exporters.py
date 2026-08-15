@@ -54,6 +54,7 @@ def export_transcript(
     )
     usage = transcript.metadata.get("usage", {})
     if usage:
+        total_cost = format_cost(usage.get("cost_usd"))
         markdown.extend(
             [
                 "",
@@ -61,7 +62,7 @@ def export_transcript(
                 "",
                 f"- Input tokens: {usage.get('input_tokens', 0):,}",
                 f"- Output tokens: {usage.get('output_tokens', 0):,}",
-                f"- Estimated cost: {format_cost(usage.get('cost_usd'))}",
+                f"- Estimated total cost: {total_cost}",
             ]
         )
     if transcript.notes:

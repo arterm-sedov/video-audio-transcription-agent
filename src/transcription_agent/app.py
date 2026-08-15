@@ -21,6 +21,7 @@ def transcribe_upload(
     provider: str,
     model: str,
     prompt: str,
+    proxy: str,
     diarization: bool,
     progress=None,
 ):
@@ -33,6 +34,7 @@ def transcribe_upload(
         database_path=settings.database_path,
         diarization_enabled=diarization,
         max_output_tokens=settings.max_output_tokens,
+        proxy=proxy.strip(),
     )
     settings.validate()
     registry = JobRegistry(settings.database_path)
@@ -101,6 +103,12 @@ def build_demo():
             label="Transcription prompt",
             lines=8,
         )
+        proxy = gr.Textbox(
+            value="",
+            label="Proxy (optional)",
+            placeholder="socks5h://host:port or http://host:port",
+            lines=1,
+        )
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"
         )
@@ -109,7 +117,7 @@ def build_demo():
         outputs = gr.Files(label="Downloads")
         run.click(
             transcribe_upload,
-            inputs=[upload, provider, model, prompt, diarization],
+            inputs=[upload, provider, model, prompt, proxy, diarization],
             outputs=[transcript, outputs],
             api_visibility="private",
             concurrency_limit=1,

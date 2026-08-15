@@ -21,6 +21,7 @@ class Settings:
     database_path: Path = Path(".transcriptions/jobs.sqlite3")
     diarization_enabled: bool = True
     max_output_tokens: int = 8192
+    proxy: str = ""
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = ".env") -> "Settings":
@@ -49,6 +50,7 @@ class Settings:
             diarization_enabled=os.getenv("TRANSCRIPTION_DIARIZATION", "true").lower()
             in {"1", "true", "yes", "on"},
             max_output_tokens=int(os.getenv("TRANSCRIPTION_MAX_OUTPUT_TOKENS", "8192")),
+            proxy=os.getenv("TRANSCRIPTION_PROXY", "").strip(),
         )
 
     def validate(self) -> None:

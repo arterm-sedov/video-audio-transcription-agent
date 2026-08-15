@@ -52,6 +52,16 @@ uv run transcription-agent transcribe recording.mp4 \
   --model google/gemini-3.6-flash
 ```
 
+Route provider calls through an optional proxy:
+
+```bash
+uv run transcription-agent transcribe recording.mp4 \
+  --provider-order polza \
+  --proxy socks5h://192.168.122.1:1080
+```
+
+The GUI has a matching Proxy field; `TRANSCRIPTION_PROXY` configures it globally. HTTP and SOCKS5 (`socks5h://`, DNS via proxy) are supported for both OpenAI-compatible and Gemini clients.
+
 List available video-capable models with curated price ranking:
 
 ```bash

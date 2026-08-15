@@ -24,6 +24,19 @@ def test_configured_providers_normalize_model_per_provider(monkeypatch) -> None:
     assert providers["gemini"].model == "gemini-2.5-flash"
 
 
+def test_configured_providers_pass_proxy(monkeypatch) -> None:
+    monkeypatch.setenv("POLZA_API_KEY", "test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    providers = configured_providers(
+        "google/gemini-2.5-flash",
+        ("polza", "gemini", "openrouter"),
+        proxy="socks5h://192.168.122.1:1080",
+    )
+    assert providers["polza"].proxy == "socks5h://192.168.122.1:1080"
+    assert providers["openrouter"].proxy == "socks5h://192.168.122.1:1080"
+    assert providers["gemini"].proxy == "socks5h://192.168.122.1:1080"
+
+
 def test_model_choices_are_provider_aware() -> None:
     gemini_models = model_choices_for("gemini")
     assert all(choice.startswith("gemini-") for choice in gemini_models)

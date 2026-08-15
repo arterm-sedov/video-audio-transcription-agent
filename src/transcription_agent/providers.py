@@ -50,6 +50,7 @@ class OpenAICompatibleProvider:
     timeout_seconds: float = 120.0
     retries: int = 2
     retry_delay_seconds: float = 3.0
+    proxy: str = ""
 
     def transcribe(self, media_path: str, prompt: str) -> str:
         try:
@@ -67,7 +68,10 @@ class OpenAICompatibleProvider:
         mime = mimetypes.guess_type(media_path)[0] or "video/mp4"
         encoded = base64.b64encode(raw).decode()
         client = OpenAI(
-            api_key=api_key, base_url=self.base_url, timeout=self.timeout_seconds
+            api_key=api_key,
+            base_url=self.base_url,
+            timeout=self.timeout_seconds,
+            http_client=_http_client(self.proxy),
         )
         if mime.startswith("audio/"):
             audio_format = Path(media_path).suffix.lstrip(".") or "m4a"
@@ -115,6 +119,7 @@ class GeminiProvider:
     poll_seconds: float = 2.0
     poll_attempts: int = 40
     timeout_seconds: float = 300.0
+    proxy: str = ""
 
     def transcribe(self, media_path: str, prompt: str) -> str:
         try:
@@ -128,7 +133,11 @@ class GeminiProvider:
         if not api_key:
             raise RuntimeError("Missing GEMINI_KEY or GEMINI_API_KEY")
         client = genai.Client(
-            api_key=api_key, http_options={"timeout": self.timeout_seconds * 1000}
+            api_key=api_key,
+            http_options={
+                "timeout": self.timeout_seconds * 1000,
+                "httpx_client": _http_client(self.proxy),
+            },
         )
         uploaded = client.files.upload(file=media_path)
         active = None
@@ -169,7 +178,21 @@ class GeminiProvider:
                 client.files.delete(name=uploaded.name)
 
 
-def configured_providers(model: str, order: tuple[str, ...]) -> dict[str, Provider]:
+def _http_client(proxy: str):
+    """Build an httpx client routed through an optional proxy."""
+    import httpx
+
+    if not proxy:
+        return None
+    return httpx.Client(
+        transport=httpx.HTTPTransport(proxy=proxy),
+        timeout=httpx.Timeout(300.0),
+    )
+
+
+def configured_providers(
+    model: str, order: tuple[str, ...], proxy: str = ""
+) -> dict[str, Provider]:
     """Build configured provider instances without requiring optional imports."""
     return {
         "polza": OpenAICompatibleProvider(
@@ -177,12 +200,14 @@ def configured_providers(model: str, order: tuple[str, ...]) -> dict[str, Provid
             os.getenv("POLZA_BASE_URL", "https://polza.ai/api/v1"),
             "POLZA_API_KEY",
             model,
+            proxy=proxy,
         ),
         "openrouter": OpenAICompatibleProvider(
             "openrouter",
             os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             "OPENROUTER_API_KEY",
             model,
+            proxy=proxy,
         ),
-        "gemini": GeminiProvider(model=model.removeprefix("google/")),
+        "gemini": GeminiProvider(model=model.removeprefix("google/"), proxy=proxy),
     }

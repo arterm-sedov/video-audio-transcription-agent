@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     transcribe.add_argument(
         "--prompt", default=None, help="Custom transcription prompt"
     )
+    transcribe.add_argument(
+        "--proxy",
+        default=None,
+        help="Optional proxy for provider calls, e.g. socks5h://192.168.122.1:1080",
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -56,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.model:
         settings = replace(settings, model=args.model)
+    if args.proxy:
+        settings = replace(settings, proxy=args.proxy)
     settings.validate()
     source = resolve_source(args.media, settings.output_dir / "inputs")
     registry = JobRegistry(settings.database_path)

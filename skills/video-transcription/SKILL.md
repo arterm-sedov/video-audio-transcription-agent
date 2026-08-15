@@ -10,3 +10,5 @@ Use the standalone `transcription-agent` CLI or Gradio UI. The default provider 
 Outputs are Markdown, JSON, SRT, and VTT. The CLI and GUI report total processing price in USD (Polza `cost_rub` is converted via `POLZA_RUB_TO_USD_RATE`, default 90 RUB/USD; OpenRouter reports `cost` in USD; Gemini cost is only available in its dashboard). Temporary media chunks and remote provider files are disposable and must not be committed.
 
 Provider routing by IP region: Polza prefers Russian customer IPs and rejects VPN exits; OpenRouter and Gemini require non-Russian IPs (VPN or hosting such as Hugging Face Spaces) and fail from Russian IPs. The provider chain retries and falls back automatically per job.
+
+Optional proxy: CLI `--proxy socks5h://host:port`, GUI field, or `TRANSCRIPTION_PROXY` env routes provider calls through an HTTP or SOCKS5 proxy (e.g. `socks5h://192.168.122.1:1080` for Polza on the corporate gateway). Both OpenAI-compatible (Polza/OpenRouter) and direct Gemini clients honor it.

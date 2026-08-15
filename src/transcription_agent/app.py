@@ -8,6 +8,7 @@ from .exporters import export_transcript
 from .media import create_chunks
 from .models_catalog import model_choices_for
 from .orchestrator import TranscriptionService
+from .providers import PROMPT_TEMPLATE
 from .progress import ProgressEvent
 from .registry import JobRegistry
 
@@ -91,16 +92,11 @@ def build_demo():
             label="Model",
         )
         prompt = gr.Textbox(
-            value=(
-                "Transcribe all spoken dialogue in this video clip. "
-                "Return only a chronological transcript, one speaker turn per line, "
-                "with EXACTLY ONE turn per line and a hard newline between turns, "
-                "in this exact format: [MM:SS] Speaker: words. "
-                "Never concatenate multiple turns onto one line. "
-                "Keep speaker labels consistent using any visible active-speaker cue."
+            value=PROMPT_TEMPLATE.replace("{start}", "relative").replace(
+                "{end}", "relative"
             ),
             label="Transcription prompt",
-            lines=3,
+            lines=8,
         )
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"

@@ -8,3 +8,5 @@ description: Transcribe video and audio with speaker attribution using visual ac
 Use the standalone `transcription-agent` CLI or Gradio UI. The default provider chain is Polza, direct Gemini, then OpenRouter. The prompt treats any active-speaker border, highlight, focus box, or equivalent visual cue as evidence and falls back to `SpeakerN` when evidence is ambiguous.
 
 Outputs are Markdown, JSON, SRT, and VTT. The CLI and GUI report total processing price in USD (Polza `cost_rub` is converted via `POLZA_RUB_TO_USD_RATE`, default 90 RUB/USD; OpenRouter reports `cost` in USD; Gemini cost is only available in its dashboard). Temporary media chunks and remote provider files are disposable and must not be committed.
+
+Network routing: Polza works without a VPN and can fail over a VPN; OpenRouter and Gemini require the VPN route and fail without it. The provider chain retries and falls back automatically per job.

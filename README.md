@@ -61,6 +61,15 @@ uv run transcription-agent models --provider gemini
 
 The default provider order is `polza,gemini,openrouter`. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
 
+## Network routing note
+
+Provider reachability depends on the active network path:
+
+- **Polza** works without a VPN and can fail (connection timeouts) while a VPN is active.
+- **OpenRouter** and **Gemini** require the VPN exit that reaches them and fail with `403` / `400 User location is not supported` when it is off.
+
+The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable in the current network state. If both paths are needed, switch the network route between runs.
+
 ## Skill
 
 Load [`skills/video-transcription/SKILL.md`](skills/video-transcription/SKILL.md) when an agent needs the transcription workflow. The canonical prompt is [`skills/video-transcription/prompts/transcription.md`](skills/video-transcription/prompts/transcription.md).

@@ -1,83 +1,97 @@
 # Offline VLM model catalog (fallback when live discovery is unreachable).
-# prices: estimated USD per 1M input tokens (cheapest first).
-# providers: model ids available per provider (Polza and OpenRouter share the
-# OpenAI-compatible namespace; Gemini serves only Gemini models).
-prices:
-  google/gemini-3.5-flash-lite: 0.05
-  gemini-3.5-flash-lite: 0.05
-  qwen/qwen3-vl-8b-instruct: 0.05
-  google/gemini-3.6-flash: 0.1
-  gemini-3.6-flash: 0.1
-  google/gemini-3-flash-preview: 0.1
-  gemini-3-flash-preview: 0.1
-  qwen/qwen3.6-flash: 0.1
-  stepfun/step-3.7-flash: 0.1
-  qwen/qwen3-vl-32b-instruct: 0.15
-  z-ai/glm-4.6v: 0.15
-  z-ai/glm-5v-turbo: 0.2
-  google/gemini-2.5-flash: 0.3
-  gemini-2.5-flash: 0.3
-  qwen/qwen3.6-plus: 0.4
-  qwen/qwen2.5-vl-72b-instruct: 0.4
-  minimax/minimax-m2.7: 0.4
-  moonshotai/kimi-k2.6: 0.4
-  gemini-3.1-flash-lite-preview: 0.4
-  z-ai/glm-5.1: 0.5
-  qwen/qwen3-vl-235b-a22b-instruct: 0.6
-  minimax/minimax-m3: 0.6
-  moonshotai/kimi-k3: 0.6
-  xiaomi/mimo-v2.5-pro: 0.6
-  z-ai/glm-5.2: 0.7
-  qwen/qwen3.7-max: 0.8
-  baidu/ernie-4.5-vl-424b-a47b: 0.8
-  gemini-2.5-pro: 1.25
-  google/gemini-3.1-pro-preview: 1.25
-  gemini-3.1-pro-preview: 1.25
-  gemini-omni-video: 1.5
-
-providers:
-  polza:
-    - google/gemini-3.5-flash-lite
-    - google/gemini-3.6-flash
-    - google/gemini-3-flash-preview
-    - google/gemini-2.5-flash
-    - google/gemini-3.1-pro-preview
-    - qwen/qwen3.6-flash
-    - qwen/qwen3.6-plus
-    - qwen/qwen3.7-max
-    - qwen/qwen3-vl-8b-instruct
-    - qwen/qwen3-vl-32b-instruct
-    - qwen/qwen3-vl-235b-a22b-instruct
-    - qwen/qwen2.5-vl-72b-instruct
-    - z-ai/glm-4.6v
-    - z-ai/glm-5v-turbo
-    - z-ai/glm-5.1
-    - z-ai/glm-5.2
-    - stepfun/step-3.7-flash
-    - minimax/minimax-m2.7
-    - minimax/minimax-m3
-    - moonshotai/kimi-k2.6
-    - moonshotai/kimi-k3
-    - xiaomi/mimo-v2.5-pro
-    - baidu/ernie-4.5-vl-424b-a47b
-    - gemini-omni-video
-  openrouter:
-    - google/gemini-3.5-flash-lite
-    - google/gemini-3.6-flash
-    - google/gemini-3-flash-preview
-    - google/gemini-2.5-flash
-    - google/gemini-3.1-pro-preview
-    - qwen/qwen3.6-plus
-    - qwen/qwen3-vl-32b-instruct
-    - minimax/minimax-m3
-    - moonshotai/kimi-k3
-    - z-ai/glm-5.2
-    - gemini-omni-video
-  gemini:
-    - gemini-3.5-flash-lite
-    - gemini-3.6-flash
-    - gemini-3-flash-preview
-    - gemini-2.5-flash
-    - gemini-3.1-flash-lite-preview
-    - gemini-2.5-pro
-    - gemini-3.1-pro-preview
+# Canonical shape: models-first, each model lists its supported providers.
+# price: estimated USD per 1M input tokens (used for cheapest-first ranking).
+models:
+  baidu/ernie-4.5-vl-424b-a47b:
+    price: 0.8
+    providers: [polza]
+  gemini-2.5-flash:
+    price: 0.3
+    providers: [gemini]
+  gemini-2.5-pro:
+    price: 1.25
+    providers: [gemini]
+  gemini-3-flash-preview:
+    price: 0.1
+    providers: [gemini]
+  gemini-3.1-flash-lite-preview:
+    price: 0.4
+    providers: [gemini]
+  gemini-3.1-pro-preview:
+    price: 1.25
+    providers: [gemini]
+  gemini-3.5-flash-lite:
+    price: 0.05
+    providers: [gemini]
+  gemini-3.6-flash:
+    price: 0.1
+    providers: [gemini]
+  gemini-omni-video:
+    price: 1.5
+    providers: [polza, openrouter]
+  google/gemini-2.5-flash:
+    price: 0.3
+    providers: [polza, openrouter]
+  google/gemini-3-flash-preview:
+    price: 0.1
+    providers: [polza, openrouter]
+  google/gemini-3.1-pro-preview:
+    price: 1.25
+    providers: [polza, openrouter]
+  google/gemini-3.5-flash-lite:
+    price: 0.05
+    providers: [polza, openrouter]
+  google/gemini-3.6-flash:
+    price: 0.1
+    providers: [polza, openrouter]
+  minimax/minimax-m2.7:
+    price: 0.4
+    providers: [polza]
+  minimax/minimax-m3:
+    price: 0.6
+    providers: [polza, openrouter]
+  moonshotai/kimi-k2.6:
+    price: 0.4
+    providers: [polza]
+  moonshotai/kimi-k3:
+    price: 0.6
+    providers: [polza, openrouter]
+  qwen/qwen2.5-vl-72b-instruct:
+    price: 0.4
+    providers: [polza]
+  qwen/qwen3-vl-235b-a22b-instruct:
+    price: 0.6
+    providers: [polza]
+  qwen/qwen3-vl-32b-instruct:
+    price: 0.15
+    providers: [polza, openrouter]
+  qwen/qwen3-vl-8b-instruct:
+    price: 0.05
+    providers: [polza]
+  qwen/qwen3.6-flash:
+    price: 0.1
+    providers: [polza]
+  qwen/qwen3.6-plus:
+    price: 0.4
+    providers: [polza, openrouter]
+  qwen/qwen3.7-max:
+    price: 0.8
+    providers: [polza]
+  stepfun/step-3.7-flash:
+    price: 0.1
+    providers: [polza]
+  xiaomi/mimo-v2.5-pro:
+    price: 0.6
+    providers: [polza]
+  z-ai/glm-4.6v:
+    price: 0.15
+    providers: [polza]
+  z-ai/glm-5.1:
+    price: 0.5
+    providers: [polza]
+  z-ai/glm-5.2:
+    price: 0.7
+    providers: [polza, openrouter]
+  z-ai/glm-5v-turbo:
+    price: 0.2
+    providers: [polza]

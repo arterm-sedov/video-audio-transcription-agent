@@ -20,11 +20,23 @@ def _load_catalog() -> dict:
     return yaml.safe_load(_CATALOG_PATH.read_text(encoding="utf-8"))
 
 
-MODEL_CATALOG: dict[str, tuple[str, ...]] = {
-    provider: tuple(models) for provider, models in _load_catalog()["providers"].items()
+_MODELS_DATA = _load_catalog()["models"]
+
+PRICES: dict[str, float] = {
+    model_id: float(entry["price"]) for model_id, entry in _MODELS_DATA.items()
 }
 
-PRICES: dict[str, float] = dict(_load_catalog()["prices"])
+PROVIDERS_BY_MODEL: dict[str, tuple[str, ...]] = {
+    model_id: tuple(entry["providers"]) for model_id, entry in _MODELS_DATA.items()
+}
+
+_MODEL_CATALOG: dict[str, list[str]] = {}
+for model_id, providers in PROVIDERS_BY_MODEL.items():
+    for provider in providers:
+        _MODEL_CATALOG.setdefault(provider, []).append(model_id)
+MODEL_CATALOG: dict[str, tuple[str, ...]] = {
+    provider: tuple(models) for provider, models in _MODEL_CATALOG.items()
+}
 
 
 def model_choices_for(provider: str) -> tuple[str, ...]:

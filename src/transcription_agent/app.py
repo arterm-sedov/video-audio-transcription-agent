@@ -6,6 +6,7 @@ from pathlib import Path
 from .config import Settings
 from .exporters import export_transcript
 from .media import create_chunks
+from .model_registry import live_model_choices_cached
 from .models_catalog import model_choices_for
 from .orchestrator import TranscriptionService
 from .progress import ProgressEvent
@@ -85,7 +86,9 @@ def build_demo():
             value="polza",
             label="Provider",
         )
-        shared_choices = model_choices_for("polza")
+        shared_choices = live_model_choices_cached("polza") or model_choices_for(
+            "polza"
+        )
         model = gr.Dropdown(
             choices=list(shared_choices),
             value=shared_choices[0],
@@ -114,8 +117,10 @@ def build_demo():
         )
         provider.change(
             lambda value: gr.update(
-                choices=list(model_choices_for(value)),
-                value=model_choices_for(value)[0],
+                choices=list(
+                    live_model_choices_cached(value) or model_choices_for(value)
+                ),
+                value=(live_model_choices_cached(value) or model_choices_for(value))[0],
             ),
             inputs=provider,
             outputs=[model],

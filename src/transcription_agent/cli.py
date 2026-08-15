@@ -8,7 +8,8 @@ from .config import Settings
 from .connectors import resolve_source
 from .exporters import export_transcript
 from .media import create_chunks
-from .models_catalog import PRICES, model_choices_for
+from .model_registry import live_model_choices_cached
+from .models_catalog import PRICES
 from .orchestrator import TranscriptionService
 from .registry import JobRegistry
 
@@ -43,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "models":
-        for model_id in model_choices_for(args.provider):
+        choices = live_model_choices_cached(args.provider)
+        for model_id in choices:
             price = PRICES.get(model_id)
             price_text = f"{price:.3f}" if price is not None else "N/A"
             print(f"{model_id}\t{price_text}")

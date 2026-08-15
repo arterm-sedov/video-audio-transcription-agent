@@ -13,4 +13,4 @@ Provider routing by IP region: Polza prefers Russian customer IPs and rejects VP
 
 Optional proxy: set per provider via `TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROUTER_PROXY`, `TRANSCRIPTION_GEMINI_PROXY` (e.g. Polza default `socks5h://192.168.122.1:1080` on the corporate gateway). Unset values fall back to `TRANSCRIPTION_PROXY`, CLI `--proxy`, or the GUI field. Both OpenAI-compatible (Polza/OpenRouter) and direct Gemini clients honor it.
 
-Output control (CLI): `--output-md <name>` sets the Markdown filename (default `<source>_transcription.md`); `--formats json,srt,vtt,zip` selects which additional formats to write. The GUI always produces the same four files plus the ZIP artifact.
+Output control (CLI): `--output-md <name>` sets the Markdown filename (default `<source>_transcription.md`). Default output is Markdown only; `--formats json,srt,vtt,zip` adds those files. The GUI always produces the full set (Markdown, JSON, SRT, VTT, ZIP).

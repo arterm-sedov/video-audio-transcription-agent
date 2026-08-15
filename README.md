@@ -71,6 +71,15 @@ uv run transcription-agent models --provider gemini
 
 The default provider order is `polza,gemini,openrouter`. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
 
+CLI output control: by default only the Markdown transcript is written. Add other formats explicitly:
+
+```bash
+uv run transcription-agent transcribe recording.mp4 --formats json,srt,vtt,zip
+uv run transcription-agent transcribe recording.mp4 --output-md notes.md
+```
+
+The GUI always writes the full set (Markdown, JSON, SRT, VTT, ZIP).
+
 ## Provider routing by IP region
 
 Provider reachability depends on the IP region the request egresses from:

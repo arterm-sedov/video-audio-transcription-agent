@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     transcribe.add_argument(
         "--formats",
         default=None,
-        help="Extra formats to write: json,srt,vtt,zip (default: markdown,json,srt,vtt,zip)",
+        help="Additional formats: json,srt,vtt,zip (default: markdown only)",
     )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     export_formats = (
         tuple(f.strip().lower() for f in args.formats.split(",") if f.strip())
         if args.formats
-        else None
+        else ("markdown",)
     )
     settings.validate()
     source = resolve_source(args.media, settings.output_dir / "inputs")
@@ -103,10 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         from .artifacts import build_artifact_zip
 
-        include_zip = export_formats is None or "zip" in export_formats
         package = (
             build_artifact_zip(list(paths.values()), prefix=source.stem)
-            if include_zip
+            if "zip" in export_formats
             else None
         )
         registry.update(job_id, "completed")

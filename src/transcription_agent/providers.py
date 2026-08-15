@@ -48,6 +48,8 @@ class OpenAICompatibleProvider:
     api_key_env: str
     model: str
     timeout_seconds: float = 120.0
+    retries: int = 2
+    retry_delay_seconds: float = 3.0
 
     def transcribe(self, media_path: str, prompt: str) -> str:
         try:
@@ -82,15 +84,20 @@ class OpenAICompatibleProvider:
                 {"type": "text", "text": prompt},
                 {"type": "video_url", "video_url": {"url": data_url}},
             ]
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
-        )
+        last_error: Exception | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": content}],
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 - provider retry boundary
+                last_error = exc
+                if attempt < self.retries:
+                    time.sleep(self.retry_delay_seconds * (attempt + 1))
+        if last_error is not None:
+            raise last_error
         usage = getattr(response, "usage", None)
         usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else usage
         return ProviderResult(

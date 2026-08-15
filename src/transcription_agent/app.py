@@ -8,8 +8,8 @@ from .exporters import export_transcript
 from .media import create_chunks
 from .models_catalog import model_choices_for
 from .orchestrator import TranscriptionService
-from .providers import PROMPT_TEMPLATE
 from .progress import ProgressEvent
+from .providers import PROMPT_TEMPLATE
 from .registry import JobRegistry
 
 logger = logging.getLogger(__name__)

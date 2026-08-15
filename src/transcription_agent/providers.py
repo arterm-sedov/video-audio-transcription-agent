@@ -34,6 +34,7 @@ class OpenAICompatibleProvider:
     base_url: str
     api_key_env: str
     model: str
+    timeout_seconds: float = 120.0
 
     def transcribe(self, media_path: str, prompt: str) -> str:
         try:
@@ -50,7 +51,9 @@ class OpenAICompatibleProvider:
 
         mime = mimetypes.guess_type(media_path)[0] or "video/mp4"
         encoded = base64.b64encode(raw).decode()
-        client = OpenAI(api_key=api_key, base_url=self.base_url)
+        client = OpenAI(
+            api_key=api_key, base_url=self.base_url, timeout=self.timeout_seconds
+        )
         if mime.startswith("audio/"):
             audio_format = Path(media_path).suffix.lstrip(".") or "m4a"
             content = [

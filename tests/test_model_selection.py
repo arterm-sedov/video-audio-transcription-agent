@@ -2,11 +2,7 @@ from dataclasses import replace
 
 from transcription_agent.app import build_demo
 from transcription_agent.config import Settings
-from transcription_agent.models_catalog import (
-    GEMINI_MODEL_IDS,
-    SHARED_MODEL_IDS,
-    model_choices_for,
-)
+from transcription_agent.models_catalog import model_choices_for
 from transcription_agent.providers import configured_providers
 
 
@@ -29,13 +25,20 @@ def test_configured_providers_normalize_model_per_provider(monkeypatch) -> None:
 
 
 def test_model_choices_are_provider_aware() -> None:
-    assert "google/gemini-2.5-flash" in SHARED_MODEL_IDS
-    assert any(choice.startswith("qwen/") for choice in SHARED_MODEL_IDS)
-    assert model_choices_for("gemini") == GEMINI_MODEL_IDS
-    assert all(
-        choice.startswith(("gemini", "google/gemini-")) for choice in GEMINI_MODEL_IDS
-    )
+    gemini_models = model_choices_for("gemini")
+    assert all(choice.startswith("gemini-") for choice in gemini_models)
+    assert "gemini-2.5-flash" in gemini_models
+    assert "gemini-2.5-pro" in gemini_models
     assert "qwen/qwen3.6-plus" in model_choices_for("polza")
+    assert all("qwen" not in choice for choice in model_choices_for("gemini"))
+
+
+def test_model_choices_are_price_sorted() -> None:
+    from transcription_agent.models_catalog import PRICES
+
+    for provider in ("polza", "openrouter", "gemini"):
+        prices = [PRICES.get(model, 1e9) for model in model_choices_for(provider)]
+        assert prices == sorted(prices), provider
 
 
 def test_demo_still_builds() -> None:

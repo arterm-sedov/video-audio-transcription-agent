@@ -8,7 +8,7 @@ from .config import Settings
 from .connectors import resolve_source
 from .exporters import export_transcript
 from .media import create_chunks
-from .models_catalog import SHARED_VIDEO_MODELS, model_choices_for
+from .models_catalog import PRICES, model_choices_for
 from .orchestrator import TranscriptionService
 from .registry import JobRegistry
 
@@ -44,13 +44,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "models":
         for model_id in model_choices_for(args.provider):
-            model = next((m for m in SHARED_VIDEO_MODELS if m.id == model_id), None)
-            price = (
-                f"{model.price_per_1m_input_usd:.3f}"
-                if model and model.price_per_1m_input_usd is not None
-                else "N/A"
-            )
-            print(f"{model_id}\t{price}\t{model.note if model else ''}")
+            price = PRICES.get(model_id)
+            price_text = f"{price:.3f}" if price is not None else "N/A"
+            print(f"{model_id}\t{price_text}")
         return 0
     if args.provider_order:
         settings = replace(

@@ -14,9 +14,9 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 class Settings:
     """Runtime settings for CLI, UI, and provider orchestration."""
 
-    provider_order: tuple[str, ...] = ("polza", "gemini", "openrouter")
+    provider_order: tuple[str, ...] = ("polza", "openrouter", "gemini")
     model: str = "google/gemini-2.5-flash"
-    chunk_seconds: int = 300
+    chunk_seconds: int = 0
     output_dir: Path = Path(".transcriptions")
     database_path: Path = Path(".transcriptions/jobs.sqlite3")
     diarization_enabled: bool = True
@@ -33,15 +33,16 @@ class Settings:
         order = tuple(
             item.strip().lower()
             for item in os.getenv(
-                "TRANSCRIPTION_PROVIDER_ORDER", "polza,gemini,openrouter"
+                "TRANSCRIPTION_PROVIDER_ORDER", "polza,openrouter,gemini"
             ).split(",")
             if item.strip()
         )
         if not order:
             raise ValueError("TRANSCRIPTION_PROVIDER_ORDER must not be empty")
-        chunk_seconds = int(os.getenv("TRANSCRIPTION_CHUNK_SECONDS", "300"))
-        if chunk_seconds <= 0:
-            raise ValueError("TRANSCRIPTION_CHUNK_SECONDS must be positive")
+        # 0 or negative => auto: chunk size derives from the model's context
+        # window and worst-case token-per-second rate
+        # (see chunking.plan_chunks_for_model).
+        chunk_seconds = int(os.getenv("TRANSCRIPTION_CHUNK_SECONDS", "0"))
         return cls(
             provider_order=order,
             model=os.getenv("TRANSCRIPTION_MODEL", "google/gemini-2.5-flash"),
@@ -75,7 +76,5 @@ class Settings:
             raise ValueError(f"Unsupported providers: {sorted(unknown)}")
         if not self.model.strip():
             raise ValueError("TRANSCRIPTION_MODEL must not be empty")
-        if self.chunk_seconds <= 0:
-            raise ValueError("chunk_seconds must be positive")
         if self.max_output_tokens <= 0:
             raise ValueError("TRANSCRIPTION_MAX_OUTPUT_TOKENS must be positive")

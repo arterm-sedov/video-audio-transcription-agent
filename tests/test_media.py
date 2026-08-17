@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from transcription_agent.config import Settings
 from transcription_agent.media import MediaInfo
 
@@ -19,6 +17,8 @@ def test_media_info_contract() -> None:
     assert info.has_audio and info.has_video
 
 
-def test_settings_reject_bad_chunk_size() -> None:
-    with pytest.raises(ValueError):
-        Settings(chunk_seconds=0).validate()
+def test_settings_allow_auto_chunk_size() -> None:
+    # 0 means "auto from model context window"; it is valid, not an error.
+    settings = Settings(chunk_seconds=0)
+    settings.validate()
+    assert settings.chunk_seconds == 0

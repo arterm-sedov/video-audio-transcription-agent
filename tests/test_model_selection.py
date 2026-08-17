@@ -5,6 +5,11 @@ from transcription_agent.config import Settings
 from transcription_agent.models_catalog import model_choices_for
 from transcription_agent.providers import configured_providers
 
+# Placeholder proxy used only to exercise proxy propagation. The real value in
+# this repo comes from TRANSCRIPTION_POLZA_PROXY / TRANSCRIPTION_PROXY (no host
+# is baked into the source).
+PROXY_EXAMPLE = "socks5h://<proxy-host>:1080"
+
 
 def test_cli_model_flag_replaces_settings() -> None:
     settings = Settings.from_env()
@@ -30,11 +35,11 @@ def test_configured_providers_pass_proxy(monkeypatch) -> None:
     providers = configured_providers(
         "google/gemini-2.5-flash",
         ("polza", "gemini", "openrouter"),
-        proxy="socks5h://192.168.122.1:1080",
+        proxy=PROXY_EXAMPLE,
     )
-    assert providers["polza"].proxy == "socks5h://192.168.122.1:1080"
-    assert providers["openrouter"].proxy == "socks5h://192.168.122.1:1080"
-    assert providers["gemini"].proxy == "socks5h://192.168.122.1:1080"
+    assert providers["polza"].proxy == PROXY_EXAMPLE
+    assert providers["openrouter"].proxy == PROXY_EXAMPLE
+    assert providers["gemini"].proxy == PROXY_EXAMPLE
 
 
 def test_model_choices_are_provider_aware() -> None:

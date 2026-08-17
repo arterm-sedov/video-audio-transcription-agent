@@ -1,5 +1,6 @@
 """Chunked transcription orchestration."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -9,8 +10,11 @@ from .models import Segment, Transcript
 from .progress import ProgressCallback, ProgressEvent, emit
 from .providers import PROMPT_TEMPLATE, configured_providers
 from .timestamps import parse_model_timestamp
+from .upload_adapters import MediaRef, UploadDeclined, build_upload_adapter
 
 _LINE = re.compile(r"^\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*(.*)$")
+
+logger = logging.getLogger(__name__)
 
 
 def parse_segments(text: str) -> list[Segment]:
@@ -42,6 +46,11 @@ class TranscriptionService:
         self.providers = configured_providers(
             settings.model, settings.provider_order, proxies
         )
+        self.settings = settings
+        self._adapters = {
+            provider: build_upload_adapter(provider, settings)
+            for provider in settings.provider_order
+        }
 
     def transcribe_clips(
         self,
@@ -65,15 +74,42 @@ class TranscriptionService:
                 start="relative", end="relative"
             )
             result = None
+            uploaded: MediaRef | None = None
             for provider_name in self.settings.provider_order:
+                adapter = self._adapters.get(provider_name)
+                provider = self.providers[provider_name]
                 try:
-                    result = self.providers[provider_name].transcribe(
-                        path, active_prompt
-                    )
+                    # Upload once; fall back to inline base64 if upload fails.
+                    if adapter is not None:
+                        try:
+                            uploaded = adapter.upload(path)
+                        except UploadDeclined:
+                            # Expected routing decision: this provider+file type
+                            # is not uploadable; fall back to inline base64
+                            # without error noise.
+                            uploaded = None
+                        except Exception as up_exc:  # noqa: BLE001 - fallback boundary
+                            errors.append(
+                                f"{provider_name} upload({Path(path).name}): {up_exc}"
+                            )
+                            uploaded = None
+                    if uploaded is not None and hasattr(
+                        provider, "transcribe_media"
+                    ):
+                        result = provider.transcribe_media(uploaded, active_prompt, path)
+                    else:
+                        result = provider.transcribe(path, active_prompt)
                     selected_provider = provider_name
                     break
                 except Exception as exc:  # noqa: BLE001 - provider fallback boundary
                     errors.append(f"{provider_name} ({Path(path).name}): {exc}")
+                finally:
+                    if uploaded is not None and adapter is not None:
+                        try:
+                            adapter.delete(uploaded)
+                        except Exception as del_exc:  # noqa: BLE001 - cleanup best-effort
+                            logger.debug("upload cleanup failed: %s", del_exc)
+                        uploaded = None
             if result is None:
                 raise RuntimeError("All providers failed: " + "; ".join(errors))
             chunks.append((offset, parse_segments(result.text)))

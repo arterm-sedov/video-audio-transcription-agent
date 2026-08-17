@@ -3,6 +3,11 @@
 import math
 from dataclasses import dataclass
 
+try:
+    from .limits import resolve_context_length, token_rate
+except ImportError:  # pragma: no cover - test shim
+    from transcription_agent.limits import resolve_context_length, token_rate
+
 
 @dataclass(frozen=True, slots=True)
 class Chunk:
@@ -11,16 +16,61 @@ class Chunk:
     end: float
 
 
-def plan_chunks(duration: float, chunk_seconds: int = 300) -> tuple[Chunk, ...]:
-    """Return contiguous, non-overlapping chunks covering the full duration."""
+# Safety floor: never produce sub-clip fragments even when a model window is tiny.
+FLOOR_SECONDS = 300
+# Reserve tokens for the prompt and model output so we don't fill the window.
+OUTPUT_RESERVE_TOKENS = 8_192
+
+
+def plan_chunks(
+    duration: float,
+    chunk_seconds: int | None = None,
+    token_budget: int | None = None,
+    floor_seconds: int = FLOOR_SECONDS,
+    prompt_tokens: int = 512,
+) -> tuple[Chunk, ...]:
+    """Return contiguous, non-overlapping chunks covering the full duration.
+
+    Chunk size is chosen from (in priority order):
+    1. ``chunk_seconds`` when explicitly provided and positive (back-compat).
+    2. ``token_budget`` (tokens that fit the model context window) divided by the
+       worst-case token rate, so the chunk never overflows the model.
+    3. The default floor (300 s).
+
+    The result is clamped to ``floor_seconds`` minimum so we never fragment a
+    short clip into tiny pieces.
+    """
     if duration < 0:
         raise ValueError("duration must not be negative")
-    if chunk_seconds <= 0:
-        raise ValueError("chunk_seconds must be positive")
     if duration == 0:
         return ()
-    count = math.ceil(duration / chunk_seconds)
+    if chunk_seconds is not None and chunk_seconds > 0:
+        seconds = chunk_seconds
+    elif token_budget:
+        usable = max(0, token_budget - OUTPUT_RESERVE_TOKENS - prompt_tokens)
+        seconds = int(usable / token_rate())
+    else:
+        seconds = FLOOR_SECONDS
+    seconds = max(floor_seconds, seconds)
+    count = math.ceil(duration / seconds)
     return tuple(
-        Chunk(i, i * chunk_seconds, min((i + 1) * chunk_seconds, duration))
+        Chunk(i, i * seconds, min((i + 1) * seconds, duration))
         for i in range(count)
     )
+
+
+def plan_chunks_for_model(
+    duration: float,
+    provider: str,
+    model: str,
+    *,
+    chunk_seconds: int | None = None,
+    floor_seconds: int = FLOOR_SECONDS,
+) -> tuple[Chunk, ...]:
+    """Plan chunks from the model's live context window when no fixed size given."""
+    if chunk_seconds is not None and chunk_seconds > 0:
+        return plan_chunks(
+            duration, chunk_seconds=chunk_seconds, floor_seconds=floor_seconds
+        )
+    window = resolve_context_length(provider, model)
+    return plan_chunks(duration, token_budget=window, floor_seconds=floor_seconds)

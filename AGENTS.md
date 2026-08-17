@@ -11,11 +11,21 @@ and Hugging Face Gradio Spaces.
 - Follow SDD before implementation and TDD for behavior changes.
 - Prefer small, composable functions with one responsibility.
 - Reuse existing contracts and utilities before adding abstractions.
+- DRY: extract shared helpers on second use so behavior lives in exactly one place.
 - Do not add chat-agent, enterprise, or business-specific concepts here.
 - Do not commit secrets, uploaded media, generated transcripts, caches, or virtual environments.
 - Do not silently catch exceptions. Provider fallback boundaries must record the failure.
 - Validate external data and preserve actionable error messages.
 - Keep provider-specific code behind the provider interface.
+- Keep provider calls agnostic to transport: use a hosted media reference when
+  the provider and media type support it, and fall back to inline base64
+  otherwise. A media type a provider does not accept is a routing decision
+  (use base64), not a failure, so it must not appear as an error note.
+- Size chunks from the model's context window and worst-case token-per-second
+  rate; treat fixed chunk seconds as an explicit override, not the default.
+- Never hardcode hosts, addresses, credentials, or account identifiers in
+  source or committed docs; routes and proxies come from per-provider
+  environment variables.
 - Preserve CLI, Gradio, and Hugging Face compatibility when changing shared code.
 
 ## Tooling
@@ -39,6 +49,11 @@ the dependency source of truth.
 - `src/transcription_agent/models.py` — stable segment/transcript contracts.
 - `config.py` — environment-backed settings and validation.
 - `media.py` — FFmpeg/PyAV probing and portable chunk creation.
+- `chunking.py` — chunk planning driven by model context windows and token rates.
+- `limits.py` — per-model context-window resolution used by chunk planning.
+- `upload_adapters.py` — hosted media references (URL/file id) with graceful
+  inline-base64 fallback per provider and media type.
+- `model_registry.py` / `models_catalog.py` — live and offline model discovery.
 - `providers.py` — Polza, direct Gemini, and OpenRouter adapters.
 - `orchestrator.py` — provider fallback, progress, parsing, and merging.
 - `exporters.py` — Markdown, JSON, SRT, and VTT outputs.
@@ -52,8 +67,10 @@ the dependency source of truth.
 Default order is configured by `TRANSCRIPTION_PROVIDER_ORDER` and is normally:
 
 ```text
-polza,gemini,openrouter
+polza,openrouter,gemini
 ```
+The first entry is the default provider for the CLI and GUI; later entries are
+fallbacks tried in order when a provider call fails.
 
 Polza and OpenRouter use the OpenAI-compatible multimodal contract. Direct
 Gemini uploads must be polled until the uploaded file is `ACTIVE` before

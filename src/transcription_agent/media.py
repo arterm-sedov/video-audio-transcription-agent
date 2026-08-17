@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .chunking import Chunk, plan_chunks
+from .chunking import Chunk, plan_chunks, plan_chunks_for_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,13 +80,20 @@ def create_chunks(
     path: str | Path,
     output_dir: str | Path,
     chunk_seconds: int = 300,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> tuple[MediaInfo, tuple[tuple[Chunk, Path], ...]]:
     """Create portable, speech-preserving MP4 chunks using FFmpeg."""
     source = Path(path)
     info = probe(source)
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
-    chunks = plan_chunks(info.duration, chunk_seconds)
+    if provider and model:
+        # chunk_seconds <= 0 means "auto from model context window"
+        auto = None if chunk_seconds is not None and chunk_seconds <= 0 else chunk_seconds
+        chunks = plan_chunks_for_model(info.duration, provider, model, chunk_seconds=auto)
+    else:
+        chunks = plan_chunks(info.duration, chunk_seconds=chunk_seconds)
     ffmpeg = ffmpeg_binary()
     result = []
     for chunk in chunks:

@@ -47,7 +47,11 @@ def transcribe_upload(
     try:
         registry.update(job_id, "chunking")
         info, chunks = create_chunks(
-            file_path, settings.output_dir / "chunks", settings.chunk_seconds
+            file_path,
+            settings.output_dir / "chunks",
+            settings.chunk_seconds,
+            provider=settings.provider_order[0],
+            model=settings.model,
         )
         registry.update(job_id, "transcribing")
         transcript = TranscriptionService(settings).transcribe_clips(
@@ -80,12 +84,14 @@ def build_demo():
         raise RuntimeError(
             "Install the ui extra to run the Gradio application"
         ) from exc
+    settings = Settings.from_env()
+    provider_order = settings.provider_order
     with gr.Blocks(title="Video and Audio Transcription") as demo:
         gr.Markdown("# Video and Audio Transcription")
         upload = gr.File(type="filepath", label="Video or audio")
         provider = gr.Dropdown(
-            choices=["polza", "gemini", "openrouter"],
-            value="polza",
+            choices=list(provider_order),
+            value=provider_order[0],
             label="Provider",
         )
         shared_choices = live_model_choices_cached("polza") or model_choices_for(

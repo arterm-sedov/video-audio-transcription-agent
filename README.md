@@ -44,6 +44,8 @@ Override provider order for one job:
 uv run transcription-agent transcribe recording.mp4 \
   --provider-order polza,gemini,openrouter
 ```
+The first provider in `TRANSCRIPTION_PROVIDER_ORDER` is the default provider for
+the CLI and GUI; pass `--provider <name>` to use a single provider for one job.
 
 Select a model for one job:
 
@@ -57,10 +59,10 @@ Route provider calls through an optional proxy:
 ```bash
 uv run transcription-agent transcribe recording.mp4 \
   --provider-order polza \
-  --proxy socks5h://192.168.122.1:1080
+  --proxy socks5h://<proxy-host>:<port>
 ```
 
-The GUI has a matching Proxy field; `TRANSCRIPTION_PROXY` configures it globally. HTTP and SOCKS5 (`socks5h://`, DNS via proxy) are supported for both OpenAI-compatible and Gemini clients.
+The GUI has a matching Proxy field; `TRANSCRIPTION_PROXY` configures it globally, and per-provider proxies are set via `TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROUTER_PROXY`, and `TRANSCRIPTION_GEMINI_PROXY`. HTTP and SOCKS5 (`socks5h://`, DNS via proxy) are supported for both OpenAI-compatible and Gemini clients.
 
 List available video-capable models with curated price ranking:
 
@@ -69,7 +71,7 @@ uv run transcription-agent models --provider polza
 uv run transcription-agent models --provider gemini
 ```
 
-The default provider order is `polza,gemini,openrouter`. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`.
+The default provider order is `polza,openrouter,gemini`, so Polza is the default provider and Gemini is tried last. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`. Chunking is model-driven by default: `TRANSCRIPTION_CHUNK_SECONDS=0` sizes each chunk from the model's context window and worst-case token-per-second rate, so a larger-window model yields larger chunks automatically (set a positive value for fixed-size chunks).
 
 CLI output control: by default only the Markdown transcript is written. Add other formats explicitly:
 

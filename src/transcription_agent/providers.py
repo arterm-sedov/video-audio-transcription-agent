@@ -1,15 +1,17 @@
 """Provider adapters for multimodal transcription."""
 
-import base64
-import mimetypes
+import logging
 import os
 import time
+
+logger = logging.getLogger(__name__)
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from .costs import Usage, normalize_usage
+from .upload_adapters import MediaRef
 
 PROMPT_TEMPLATE = """Transcribe all spoken dialogue in this video clip. The clip covers original-video time {start} through {end}.
 
@@ -52,7 +54,7 @@ class OpenAICompatibleProvider:
     retry_delay_seconds: float = 3.0
     proxy: str = ""
 
-    def transcribe(self, media_path: str, prompt: str) -> str:
+    def _client(self):
         try:
             from openai import OpenAI
         except ImportError as exc:  # pragma: no cover
@@ -62,32 +64,56 @@ class OpenAICompatibleProvider:
         api_key = os.getenv(self.api_key_env)
         if not api_key:
             raise RuntimeError(f"Missing {self.api_key_env}")
-        with open(media_path, "rb") as source:
-            raw = source.read()
-
-        mime = mimetypes.guess_type(media_path)[0] or "video/mp4"
-        encoded = base64.b64encode(raw).decode()
-        client = OpenAI(
+        return OpenAI(
             api_key=api_key,
             base_url=self.base_url,
             timeout=self.timeout_seconds,
             http_client=_http_client(self.proxy),
         )
+
+    @staticmethod
+    def _content_from_ref(ref: MediaRef, prompt: str, media_path: str) -> list[dict]:
+        if ref.kind == "url":
+            if ref.value.startswith("data:"):
+                # data-URL reference: treat as video data url
+                return [
+                    {"type": "text", "text": prompt},
+                    {"type": "video_url", "video_url": {"url": ref.value}},
+                ]
+            # hosted url; audio supports input_audio url, video uses video_url url
+            suffix = Path(media_path).suffix.lower()
+            if suffix in {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac"}:
+                return [
+                    {"type": "text", "text": prompt},
+                    {"type": "input_audio", "input_audio": {"url": ref.value}},
+                ]
+            return [
+                {"type": "text", "text": prompt},
+                {"type": "video_url", "video_url": {"url": ref.value}},
+            ]
+        # fallback to inline base64 (data_url / base64 / path)
+        import base64 as _b64
+        import mimetypes as _mt
+
+        mime = _mt.guess_type(media_path)[0] or "video/mp4"
+        with open(media_path, "rb") as source:
+            encoded = _b64.b64encode(source.read()).decode()
+        data_url = f"data:{mime};base64,{encoded}"
         if mime.startswith("audio/"):
             audio_format = Path(media_path).suffix.lstrip(".") or "m4a"
-            content = [
+            return [
                 {"type": "text", "text": prompt},
-                {
-                    "type": "input_audio",
-                    "input_audio": {"data": encoded, "format": audio_format},
-                },
+                {"type": "input_audio", "input_audio": {"data": encoded, "format": audio_format}},
             ]
-        else:
-            data_url = f"data:{mime};base64,{encoded}"
-            content = [
-                {"type": "text", "text": prompt},
-                {"type": "video_url", "video_url": {"url": data_url}},
-            ]
+        return [
+            {"type": "text", "text": prompt},
+            {"type": "video_url", "video_url": {"url": data_url}},
+        ]
+
+    def transcribe_media(self, ref: MediaRef, prompt: str, media_path: str = "") -> ProviderResult:
+        """Transcribe a MediaRef (url/file_id) or fall back to inline base64."""
+        client = self._client()
+        content = self._content_from_ref(ref, prompt, media_path)
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
@@ -109,6 +135,12 @@ class OpenAICompatibleProvider:
             normalize_usage(self.name, usage_dict),
         )
 
+    def transcribe(self, media_path: str, prompt: str) -> ProviderResult:
+        """Transcribe media inlined as base64 (upload-unavailable fallback)."""
+        return self.transcribe_media(
+            MediaRef("base64", "", self.name), prompt, media_path
+        )
+
 
 @dataclass(slots=True)
 class GeminiProvider:
@@ -121,10 +153,9 @@ class GeminiProvider:
     timeout_seconds: float = 300.0
     proxy: str = ""
 
-    def transcribe(self, media_path: str, prompt: str) -> str:
+    def _client(self):
         try:
             from google import genai
-            from google.genai import types
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "Install the providers extra for direct Gemini calls"
@@ -132,13 +163,51 @@ class GeminiProvider:
         api_key = os.getenv("GEMINI_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Missing GEMINI_KEY or GEMINI_API_KEY")
-        client = genai.Client(
+        return genai.Client(
             api_key=api_key,
             http_options={
                 "timeout": self.timeout_seconds * 1000,
                 "httpx_client": _http_client(self.proxy),
             },
         )
+
+    def _generate(self, client, file_uri: str, prompt: str) -> ProviderResult:
+        """Generate content for a hosted file URI and normalize usage."""
+        try:
+            from google.genai import types
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError(
+                "Install the providers extra for direct Gemini calls"
+            ) from exc
+        response = client.models.generate_content(
+            model=self.model,
+            contents=types.Content(
+                parts=[
+                    types.Part(file_data=types.FileData(file_uri=file_uri)),
+                    types.Part(text=prompt),
+                ]
+            ),
+            config=types.GenerateContentConfig(
+                temperature=0,
+                max_output_tokens=int(
+                    os.getenv("TRANSCRIPTION_MAX_OUTPUT_TOKENS", "8192")
+                ),
+            ),
+        )
+        usage = getattr(response, "usage_metadata", None)
+        usage_dict = usage if isinstance(usage, dict) else None
+        return ProviderResult(
+            response.text or "", normalize_usage(self.name, usage_dict)
+        )
+
+    def transcribe_media(self, ref: MediaRef, prompt: str, media_path: str = "") -> ProviderResult:
+        """Transcribe a hosted MediaRef (url/file_id) via Gemini Files API."""
+        client = self._client()
+        return self._generate(client, ref.as_url(), prompt)
+
+    def transcribe(self, media_path: str, prompt: str) -> ProviderResult:
+        """Upload media inline, wait for ACTIVE, then generate (no adapter)."""
+        client = self._client()
         uploaded = client.files.upload(file=media_path)
         active = None
         try:
@@ -153,26 +222,7 @@ class GeminiProvider:
                 time.sleep(self.poll_seconds)
             if active is None:
                 raise TimeoutError("Gemini file did not become ACTIVE")
-            response = client.models.generate_content(
-                model=self.model,
-                contents=types.Content(
-                    parts=[
-                        types.Part(file_data=types.FileData(file_uri=active.uri)),
-                        types.Part(text=prompt),
-                    ]
-                ),
-                config=types.GenerateContentConfig(
-                    temperature=0,
-                    max_output_tokens=int(
-                        os.getenv("TRANSCRIPTION_MAX_OUTPUT_TOKENS", "8192")
-                    ),
-                ),
-            )
-            usage = getattr(response, "usage_metadata", None)
-            usage_dict = usage if isinstance(usage, dict) else None
-            return ProviderResult(
-                response.text or "", normalize_usage(self.name, usage_dict)
-            )
+            return self._generate(client, active.uri, prompt)
         finally:
             with suppress(Exception):
                 client.files.delete(name=uploaded.name)

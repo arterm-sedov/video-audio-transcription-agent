@@ -20,11 +20,18 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("validate-config")
     models_parser = subparsers.add_parser("models")
     models_parser.add_argument(
-        "--provider", default="polza", help="polza, gemini, or openrouter"
+        "--provider",
+        default=None,
+        help="Provider to list models for (default: first in TRANSCRIPTION_PROVIDER_ORDER)",
     )
     transcribe = subparsers.add_parser("transcribe")
     transcribe.add_argument("media")
     transcribe.add_argument("--provider-order")
+    transcribe.add_argument(
+        "--provider",
+        default=None,
+        help="Single provider (default: first in TRANSCRIPTION_PROVIDER_ORDER)",
+    )
     transcribe.add_argument(
         "--model",
         default=None,
@@ -59,12 +66,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "models":
-        choices = live_model_choices_cached(args.provider)
+        provider = args.provider or settings.provider_order[0]
+        choices = live_model_choices_cached(provider)
         for model_id in choices:
             price = PRICES.get(model_id)
             price_text = f"{price:.3f}" if price is not None else "N/A"
             print(f"{model_id}\t{price_text}")
         return 0
+    if args.provider:
+        settings = replace(settings, provider_order=(args.provider,))
     if args.provider_order:
         settings = replace(
             settings, provider_order=tuple(args.provider_order.split(","))
@@ -85,7 +95,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         registry.update(job_id, "chunking")
         info, chunks = create_chunks(
-            source, settings.output_dir / "chunks", settings.chunk_seconds
+            source,
+            settings.output_dir / "chunks",
+            settings.chunk_seconds,
+            provider=settings.provider_order[0],
+            model=settings.model,
         )
         registry.update(job_id, "transcribing")
         transcript = TranscriptionService(settings).transcribe_clips(

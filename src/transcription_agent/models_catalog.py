@@ -22,6 +22,19 @@ def _load_catalog() -> dict:
 
 _MODELS_DATA = _load_catalog()["models"]
 
+# Evidence-grounded primer (verified speech-from-video) and known-bad models:
+# live discovery should keep the former and always drop the latter.
+TESTED: frozenset[str] = frozenset(
+    model_id
+    for model_id, entry in _MODELS_DATA.items()
+    if entry.get("tested")
+)
+EXCLUDED: frozenset[str] = frozenset(
+    model_id
+    for model_id, entry in _MODELS_DATA.items()
+    if entry.get("excluded")
+)
+
 PRICES: dict[str, float] = {
     model_id: float(entry["price"]) for model_id, entry in _MODELS_DATA.items()
 }
@@ -40,7 +53,8 @@ MODEL_CATALOG: dict[str, tuple[str, ...]] = {
 
 
 def model_choices_for(provider: str) -> tuple[str, ...]:
-    """Models available for a provider, cheapest first."""
+    """Static catalog models for a provider, cheapest first, minus excluded."""
     key = provider.strip().lower()
     models = MODEL_CATALOG.get(key, MODEL_CATALOG["polza"])
-    return tuple(sorted(models, key=lambda mid: PRICES.get(mid, 1e9)))
+    eligible = [m for m in models if m not in EXCLUDED]
+    return tuple(sorted(eligible, key=lambda mid: PRICES.get(mid, 1e9)))

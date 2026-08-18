@@ -90,3 +90,10 @@ def test_plan_chunks_for_model_fixed_overrides_budget(monkeypatch) -> None:
         (600, 900),
         (900, 967.8),
     ]
+
+
+def test_plan_chunks_gemini_window_covers_twenty_five_minutes() -> None:
+    chunks = plan_chunks(1500.0, token_budget=1_000_000)
+    assert len(chunks) == 1
+    assert chunks[0].start == 0
+    assert chunks[0].end == 1500.0

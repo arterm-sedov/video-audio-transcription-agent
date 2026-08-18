@@ -17,6 +17,29 @@ _LINE = re.compile(r"^\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*(.*)$")
 logger = logging.getLogger(__name__)
 
 
+def _upload_with_timeout(adapter, path: str, timeout_seconds: float):
+    """Run adapter.upload with a hard timeout so a hung POST can fall back.
+
+    A TimeoutError is raised to the caller; the worker is abandoned so a
+    stalled HTTP request cannot block the rest of the job.
+    """
+    import concurrent.futures
+
+    if timeout_seconds <= 0:
+        return adapter.upload(path)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(adapter.upload, path)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise TimeoutError(
+            f"upload timeout after {timeout_seconds:g}s"
+        ) from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 def parse_segments(text: str) -> list[Segment]:
     """Parse the stable line format emitted by the transcription prompt."""
     segments = []
@@ -82,7 +105,11 @@ class TranscriptionService:
                     # Upload once; fall back to inline base64 if upload fails.
                     if adapter is not None:
                         try:
-                            uploaded = adapter.upload(path)
+                            uploaded = _upload_with_timeout(
+                                adapter,
+                                path,
+                                self.settings.upload_timeout_seconds,
+                            )
                         except UploadDeclined:
                             # Expected routing decision: this provider+file type
                             # is not uploadable; fall back to inline base64

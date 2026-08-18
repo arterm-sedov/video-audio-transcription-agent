@@ -21,6 +21,10 @@ and Hugging Face Gradio Spaces.
   the provider and media type support it, and fall back to inline base64
   otherwise. A media type a provider does not accept is a routing decision
   (use base64), not a failure, so it must not appear as an error note.
+- Bound hosted uploads with TRANSCRIPTION_UPLOAD_TIMEOUT (default 30s) so a
+  hung POST raises and the orchestrator falls back to inline base64.
+- A present TRANSCRIPTION_<PROVIDER>_PROXY (even empty) wins; only a missing
+  key inherits TRANSCRIPTION_PROXY.
 - Size chunks from the model's context window and worst-case token-per-second
   rate; treat fixed chunk seconds as an explicit override, not the default.
 - Never hardcode hosts, addresses, credentials, or account identifiers in

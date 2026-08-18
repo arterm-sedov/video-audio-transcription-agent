@@ -12,8 +12,8 @@ Optional public variables:
 
 ```text
 TRANSCRIPTION_PROVIDER_ORDER=polza,gemini,openrouter
-TRANSCRIPTION_MODEL=google/gemini-2.5-flash
-TRANSCRIPTION_CHUNK_SECONDS=300
+TRANSCRIPTION_MODEL=google/gemini-3.1-flash-lite
+TRANSCRIPTION_CHUNK_SECONDS=0
 TRANSCRIPTION_OUTPUT_DIR=.transcriptions
 TRANSCRIPTION_DIARIZATION=true
 ```

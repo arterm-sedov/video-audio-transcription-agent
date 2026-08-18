@@ -36,6 +36,7 @@ class MediaRef:
     value: str
     provider: str = ""
     expires_at: float | None = None
+    file_id: str | None = None
 
     def as_url(self) -> str:
         """Return the URL the provider should embed, or raise if not a URL ref."""
@@ -99,25 +100,27 @@ class PolzaUploadAdapter:
                             _media_type(path),
                         )
                     },
-                    data={"policy": policy},
+                    data={"storagePolicy": policy},
                 )
             response.raise_for_status()
             payload = response.json()
             url = payload.get("url") or payload.get("data", {}).get("url")
             if not url:
                 raise RuntimeError(f"Polza upload returned no url: {payload}")
-            return MediaRef("url", url, self.name)
+            file_id = payload.get("id") or payload.get("data", {}).get("id")
+            return MediaRef("url", url, self.name, file_id=file_id)
 
     def delete(self, ref: MediaRef) -> None:  # pragma: no cover - best effort
-        # Live probing shows Polza's assumed delete routes (POST /storage/delete,
-        # DELETE /storage/{id}) currently 404; TEMP_UPLOAD auto-expires in 24h, so
-        # cleanup is best-effort and TTL will reclaim the bytes.
+        # TEMP_UPLOAD auto-expires in 24h, but use the documented delete route
+        # when the upload response includes its file id.
+        if not ref.file_id:
+            logger.debug("polza upload cleanup skipped: response had no file id")
+            return
         try:
             with _http_client(self.proxy) as client:
                 client.delete(
-                    f"{self.base_url}/storage/delete",
+                    f"{self.base_url}/storage/files/{ref.file_id}",
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={"url": ref.value},
                 )
         except Exception as exc:  # noqa: BLE001 - cleanup is best-effort; TTL reclaims
             logger.debug("polza upload cleanup failed: %s", exc)
@@ -132,7 +135,14 @@ class OpenRouterUploadAdapter:
     # inline as a base64 data-URL via the chat endpoint. Decline video by type
     # so the orchestrator falls back to inline base64 instead of a doomed POST.
     _VIDEO_SUFFIXES: ClassVar[set[str]] = {
-        ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".flv", ".wmv"
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm",
+        ".m4v",
+        ".flv",
+        ".wmv",
     }
 
     def __init__(self, base_url: str, api_key: str, proxy: str = ""):

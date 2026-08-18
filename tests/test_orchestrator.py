@@ -133,3 +133,41 @@ def test_all_providers_fail_raises(tmp_path: Path, monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="All providers failed"):
         service.transcribe_clips(str(clip), [(0.0, str(clip))])
+
+
+class _HangingAdapter:
+    """Adapter whose upload never returns within the test timeout."""
+
+    name = "adapter"
+
+    def upload(self, path, *, ttl: str = "temp") -> MediaRef:
+        import time
+
+        time.sleep(10)
+        return MediaRef("url", "https://host/never", "provider")
+
+    def delete(self, ref: MediaRef) -> None:
+        return None
+
+
+def test_hung_upload_times_out_and_falls_back_to_base64(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from dataclasses import replace
+
+    adapter = _HangingAdapter()
+    provider = _RecordingProvider("polza")
+    _patch(monkeypatch, {"polza": adapter}, {"polza": provider})
+    settings = replace(
+        _settings(tmp_path, ("polza",)), upload_timeout_seconds=0.3
+    )
+    service = TranscriptionService(settings)
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"fake")
+
+    transcript = service.transcribe_clips(str(clip), [(0.0, str(clip))])
+
+    assert provider.base64_calls == 1
+    assert provider.url_calls == 0
+    assert transcript.provider == "polza"
+    assert any("upload timeout" in note for note in transcript.notes)

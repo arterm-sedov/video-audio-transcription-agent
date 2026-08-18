@@ -2,13 +2,17 @@
 
 Providers expose model catalogs over HTTP; capability signals differ:
 - OpenRouter: ``input_modalities`` lists e.g. ``["text","image","video"]``.
-- Polza: OpenAI-compatible ``/models`` (modality fields may be empty, so we
-  filter by vision/video/audio keywords in the id as a heuristic).
+- Polza: OpenAI-compatible ``/models`` with the same explicit modality field.
 - Gemini: no modality field on the list endpoint; filter by Gemini model id
   patterns and keep only models that support content generation.
 
-When a provider endpoint is unreachable (e.g. Polza over VPN, or OpenRouter
-without one), we fall back to the curated catalog so the UI always works.
+Live candidates must explicitly accept **audio and video** input: acceptance
+of video alone does not mean a model hears a video's audio track, and
+id-keyword guessing is too noisy (every ``qwen3*`` or ``gemini*`` id matches).
+Models with missing/empty modality metadata are not guessed at; the curated
+catalog is the stable evidence-grounded floor and always keeps selectors
+non-blank even when an endpoint is unreachable (e.g. Polza over VPN or
+OpenRouter without a key).
 """
 
 from __future__ import annotations
@@ -21,24 +25,8 @@ import urllib.request
 from .models_catalog import (
     EXCLUDED,
     MODEL_CATALOG,
-    PROVIDERS_BY_MODEL,
-    TESTED,
-)
-
-VISION_OR_VIDEO_KEYWORDS = (
-    "-vl",
-    "vision",
-    "omni",
-    "video",
-    "vlm",
-    "glm-4.6v",
-    "glm-5v",
-    "ernie",
-    "mimo",
-    "gemini",
-    "qwen3",
-    "kimi",
-    "minimax",
+    canonical_model_id,
+    model_sort_key,
 )
 
 # OpenRouter/Polza variant suffixes that are not general transcription models
@@ -50,12 +38,18 @@ VARIANT_SUFFIX_MARKERS = (
     "-customtools",
     "-tts",
     "-embedding",
+    ":free",
+    "-free",
+    "openrouter/",  # routing pseudomodels (openrouter/auto, auto-beta)
+    "anthropic/claude",  # Polza 400: no video endpoints
+    "meta/muse-spark",  # OpenRouter 403: 18+ attestation gate
+    "-codex",  # coding/tooling models, not transcription
 )
 
 # "~..." ids are OpenRouter weekly aliases (e.g. ~google/gemini-pro-latest); keep
 # them, they always track the newest model.
 _GEMINI_VERSION_RE = __import__("re").compile(
-    r"^~?google/gemini-(?P<family>[a-z0-9.-]+)$"
+    r"^~?(?:google/)?gemini-(?P<family>[a-z0-9.-]+)$"
 )
 
 
@@ -88,12 +82,18 @@ def _openrouter_base() -> str:
     return os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 
 
-def _model_supports_video(model_id: str, modalities: list[str] | None) -> bool:
-    """True when a model can accept video input (the transcription target)."""
-    if modalities:
-        return "video" in modalities
-    lowered = model_id.lower()
-    return any(k in lowered for k in VISION_OR_VIDEO_KEYWORDS)
+def _model_supports_transcription(modalities: list[str] | None) -> bool:
+    """True for live candidates that explicitly accept audio AND video input.
+
+    Providers advertise video input for many models that never process the
+    audio track (vision/video-only). Requiring both modalities keeps discovery
+    aligned with the transcription use case. When metadata is missing we do
+    not guess from the id; the curated catalog covers those known models.
+    """
+    if not modalities:
+        return False
+    has = set(modalities)
+    return "audio" in has and "video" in has
 
 
 def _extract_modalities(item: dict) -> list[str] | None:
@@ -131,7 +131,7 @@ def _dedupe_gemini_latest(model_ids: tuple[str, ...]) -> tuple[str, ...]:
             if part[0].isdigit():
                 try:
                     version = tuple(int(x) for x in part.split("."))
-                    family_kind = "-".join(parts[:i] + parts[i + 1:])
+                    family_kind = "-".join(parts[:i] + parts[i + 1 :])
                     break
                 except ValueError:
                     version = ()
@@ -155,23 +155,21 @@ def _fetch_openrouter(timeout: float = 20.0) -> tuple[str, ...]:
         if not model_id or _is_model_variant(model_id):
             continue
         modalities = _extract_modalities(item)
-        if _model_supports_video(model_id, modalities):
+        if _model_supports_transcription(modalities):
             result.append(model_id)
     return _dedupe_gemini_latest(tuple(result))
 
 
 def _fetch_polza(timeout: float = 20.0) -> tuple[str, ...]:
     proxy = os.getenv("TRANSCRIPTION_POLZA_PROXY", "").strip()
-    payload = _fetch_json_httpx(
-        f"{_polza_base()}/models", proxy=proxy, timeout=timeout
-    )
+    payload = _fetch_json_httpx(f"{_polza_base()}/models", proxy=proxy, timeout=timeout)
     result = []
     for item in payload.get("data", []):
         model_id = item.get("id")
         if not model_id or _is_model_variant(model_id):
             continue
         modalities = _extract_modalities(item)
-        if _model_supports_video(model_id, modalities):
+        if _model_supports_transcription(modalities):
             result.append(model_id)
     return _dedupe_gemini_latest(tuple(result))
 
@@ -191,24 +189,19 @@ def _fetch_gemini(timeout: float = 20.0) -> tuple[str, ...]:
         if not model_id or "generateContent" not in methods:
             continue
         if model_id.startswith(("gemini-", "google/gemini-")):
-            result.append(model_id)
+            result.append(canonical_model_id(model_id))
     return tuple(result)
 
 
-def _price_for(model_id: str) -> float:
-    from .models_catalog import PRICES
-
-    return PRICES.get(model_id, 1e9)
-
-
 def live_model_choices_for(provider: str) -> tuple[str, ...]:
-    """Combine the tested primer with live candidates, minus known-bad models.
+    """Combine the curated catalog with gated live candidates, minus excluded.
 
-    The static catalog is treated as an evidence-grounded primer: its tested
-    models always appear (even if live discovery is down). Live discovery adds
-    any new media-capable candidates for the provider. Models marked excluded
-    (tested and found vision-only or audio-silent) are always dropped, even if
-    live discovery reports them media-capable.
+    The static catalog is the stable evidence-grounded floor: tested models
+    first, then the other curated entries. Live discovery adds only candidates
+    whose provider metadata explicitly lists both audio and video input
+    (video-only acceptance cannot transcribe a video's audio track). Models
+    marked excluded (tested and found vision-only or audio-silent) are always
+    dropped, even if live discovery reports them media-capable.
     """
     key = provider.strip().lower()
     fetcher = {
@@ -216,19 +209,16 @@ def live_model_choices_for(provider: str) -> tuple[str, ...]:
         "polza": _fetch_polza,
         "gemini": _fetch_gemini,
     }.get(key)
-    primer = {m for m in TESTED if key in PROVIDERS_BY_MODEL.get(m, ())}
+    catalog_floor = set(MODEL_CATALOG.get(key, ()))
     try:
         live = set(fetcher()) if fetcher is not None else set()
     except Exception:  # noqa: BLE001 - network fallback boundary
         live = set()
-    # Primer is authoritative and always kept; union in live candidates; drop
-    # anything tested-and-rejected. Fall back to the catalog baseline only when
-    # both are empty so the selector never renders blank.
-    combined = primer | live
+    combined = catalog_floor | live
     if not combined:
         combined = set(MODEL_CATALOG.get(key, ()))
     combined -= EXCLUDED
-    return tuple(sorted(combined, key=_price_for))
+    return tuple(sorted(combined, key=model_sort_key))
 
 
 def live_model_choices_cached(

@@ -9,7 +9,7 @@ from .connectors import resolve_source
 from .exporters import export_transcript
 from .media import create_chunks
 from .model_registry import live_model_choices_cached
-from .models_catalog import PRICES
+from .models_catalog import PRICES, rating_label
 from .orchestrator import TranscriptionService
 from .registry import JobRegistry
 
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     transcribe.add_argument(
         "--model",
         default=None,
-        help="Model id, e.g. google/gemini-2.5-flash or qwen/qwen3.6-plus",
+        help="Model id, e.g. google/gemini-3.1-flash-lite or google/gemini-2.5-flash",
     )
     transcribe.add_argument(
         "--prompt", default=None, help="Custom transcription prompt"
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         for model_id in choices:
             price = PRICES.get(model_id)
             price_text = f"{price:.3f}" if price is not None else "N/A"
-            print(f"{model_id}\t{price_text}")
+            print(f"{model_id}\t{price_text}\t{rating_label(model_id)}")
         return 0
     if args.provider:
         settings = replace(settings, provider_order=(args.provider,))

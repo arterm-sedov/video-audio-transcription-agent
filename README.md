@@ -51,7 +51,7 @@ Select a model for one job:
 
 ```bash
 uv run transcription-agent transcribe recording.mp4 \
-  --model google/gemini-3.6-flash
+  --model google/gemini-3.1-flash-lite
 ```
 
 Route provider calls through an optional proxy:
@@ -62,16 +62,16 @@ uv run transcription-agent transcribe recording.mp4 \
   --proxy socks5h://<proxy-host>:<port>
 ```
 
-The GUI has a matching Proxy field; `TRANSCRIPTION_PROXY` configures it globally, and per-provider proxies are set via `TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROUTER_PROXY`, and `TRANSCRIPTION_GEMINI_PROXY`. HTTP and SOCKS5 (`socks5h://`, DNS via proxy) are supported for both OpenAI-compatible and Gemini clients.
+The GUI has a matching Proxy field. Per-provider env vars (`TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROUTER_PROXY`, `TRANSCRIPTION_GEMINI_PROXY`) win when present, even as an empty string; only a missing key inherits `TRANSCRIPTION_PROXY` or the CLI/GUI value. An empty OpenRouter proxy therefore stays direct and does not inherit Polza SOCKS. HTTP and SOCKS5 (`socks5h://`, DNS via proxy) are supported for both OpenAI-compatible and Gemini clients. Hung hosted uploads time out after `TRANSCRIPTION_UPLOAD_TIMEOUT` (default 30s) and fall back to inline base64. OpenRouter declines video uploads (`UploadDeclined`), so video is always sent inline.
 
-List available video-capable models with curated price ranking:
+List available video-capable models ranked by quality, then price, then speed:
 
 ```bash
 uv run transcription-agent models --provider polza
 uv run transcription-agent models --provider gemini
 ```
 
-The default provider order is `polza,openrouter,gemini`, so Polza is the default provider and Gemini is tried last. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`. Chunking is model-driven by default: `TRANSCRIPTION_CHUNK_SECONDS=0` sizes each chunk from the model's context window and worst-case token-per-second rate, so a larger-window model yields larger chunks automatically (set a positive value for fixed-size chunks).
+The default provider order is `polza,openrouter,gemini`, so Polza is the default provider and Gemini is tried last. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`. Chunking is model-driven by default: `TRANSCRIPTION_CHUNK_SECONDS=0` sizes each chunk from the model's context window and worst-case token-per-second rate, so a larger-window model yields larger chunks automatically (set a positive value for fixed-size chunks). The planner never drops below a 300-second floor, so a 300-second split is an explicit override or a tiny-window clamp, not the default. A Gemini ~1M-token window typically covers a 25-minute file in one chunk.
 
 CLI output control: by default only the Markdown transcript is written. Add other formats explicitly:
 
@@ -86,10 +86,12 @@ The GUI always writes the full set (Markdown, JSON, SRT, VTT, ZIP).
 
 Provider reachability depends on the IP region the request egresses from:
 
-- **Polza** prefers Russian customer IPs and rejects VPN exits (connection timeouts while a VPN is active).
-- **OpenRouter** and **Gemini** allow only non-Russian IPs — reachable over a VPN, or natively from non-Russian hosting such as Hugging Face Spaces — and fail with `403` / `400 User location is not supported` from a Russian IP.
+- **Polza** accepts Russian customer IPs and, on this network, also answers over a VPN. `TRANSCRIPTION_POLZA_PROXY` is the intended corporate SOCKS route; it is optional while Polza remains reachable without it.
+- **OpenRouter** and **Gemini** allow only non-Russian IPs — reachable over a VPN, or natively from non-Russian hosting such as Hugging Face Spaces — and fail with `403` / `400 User location is not supported` from a Russian IP. OpenRouter Gemini can additionally return provider TOS `403` from this account; keep those models in the roster for western/HF hosting.
 
-The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable from the current egress IP. On Hugging Face Spaces, OpenRouter and Gemini are the natural choices; on a Russian-local host without VPN, Polza is the natural choice.
+The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable from the current egress IP. On Hugging Face Spaces, OpenRouter and Gemini are the natural choices; on a Russian-local host, Polza is the natural choice.
+
+Live selectors keep evidence-tested speech-from-video models first, ranked quality then price then speed (`google/gemini-3.1-flash-lite` default; cheapest usable 5-minute job `google/gemini-2.5-flash` with mixed reliability; `google/gemini-2.5-flash-lite` and `xiaomi/mimo-v2.5` demoted after the 5-minute clip). Dead ends stay excluded: Qwen/MiniMax vision-only on Polza, Claude no-video endpoints, Muse Spark 18+ attestation, VL/Kimi/GLM/Ernie. Live discovery only adds models whose provider metadata lists both audio and video input. Ratings are model-level and shared across Polza, OpenRouter, and Gemini.
 
 ## Skill
 

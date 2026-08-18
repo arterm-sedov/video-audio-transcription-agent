@@ -115,7 +115,9 @@ def test_url_pass_through_returns_url_ref() -> None:
 def test_polza_upload_returns_url_ref_and_deletes_best_effort(
     tmp_path: Path, monkeypatch
 ) -> None:
-    fake = _FakeClient(post_payload={"url": "https://s3.polza.ai/f/abc.mp4"})
+    fake = _FakeClient(
+        post_payload={"id": "file-123", "url": "https://s3.polza.ai/f/abc.mp4"}
+    )
     _patch_client(monkeypatch, fake)
     media = tmp_path / "clip.mp4"
     media.write_bytes(b"fake-bytes")
@@ -125,17 +127,17 @@ def test_polza_upload_returns_url_ref_and_deletes_best_effort(
     # Contract: a successful upload yields a URL-kind MediaRef the caller can embed.
     assert ref.kind == "url"
     assert ref.value.startswith("https://")
+    assert ref.file_id == "file-123"
     # The client must have been used and closed (resource hygiene).
     assert fake.post_calls
     assert fake.closed is True
 
-    # delete best-effort must not raise even when the route 404s
+    # delete is best-effort and uses Polza's documented file-id route
     adapter.delete(ref)
+    assert fake.delete_calls[0][0].endswith("/storage/files/file-123")
 
 
-def test_polza_upload_raises_when_no_url_returned(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_polza_upload_raises_when_no_url_returned(tmp_path: Path, monkeypatch) -> None:
     fake = _FakeClient(post_payload={"unexpected": "shape"})
     _patch_client(monkeypatch, fake)
     media = tmp_path / "clip.mp4"
@@ -159,6 +161,7 @@ def test_polza_upload_sends_real_mime_type(tmp_path: Path, monkeypatch) -> None:
     _, kwargs = fake.post_calls[-1]
     file_tuple = kwargs["files"]["file"]
     assert file_tuple[2] == "video/mp4"
+    assert kwargs["data"] == {"storagePolicy": "TEMP_UPLOAD"}
 
 
 def test_openrouter_upload_returns_url_ref_and_deletes_best_effort(
@@ -168,7 +171,9 @@ def test_openrouter_upload_returns_url_ref_and_deletes_best_effort(
     # (OpenRouter rejects video uploads server-side), so the orchestrator can
     # fall back to inline base64 without a doomed POST.
     # Video must be declined before any HTTP call.
-    fake = _FakeClient(post_payload={"data": {"id": "fid", "url": "https://or/files/fid"}})
+    fake = _FakeClient(
+        post_payload={"data": {"id": "fid", "url": "https://or/files/fid"}}
+    )
     _patch_client(monkeypatch, fake)
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"fake-bytes")
@@ -205,7 +210,9 @@ def test_openrouter_upload_audio_uses_files_endpoint(
     tmp_path: Path, monkeypatch
 ) -> None:
     # Audio references should be carried by URL /file-id, not inlined base64.
-    fake = _FakeClient(post_payload={"data": {"id": "fid", "url": "https://or/files/fid"}})
+    fake = _FakeClient(
+        post_payload={"data": {"id": "fid", "url": "https://or/files/fid"}}
+    )
     _patch_client(monkeypatch, fake)
     audio = tmp_path / "voice.m4a"
     audio.write_bytes(b"fake-bytes")

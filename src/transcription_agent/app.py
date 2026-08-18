@@ -97,9 +97,12 @@ def build_demo():
         shared_choices = live_model_choices_cached("polza") or model_choices_for(
             "polza"
         )
+        default_model = (
+            settings.model if settings.model in shared_choices else shared_choices[0]
+        )
         model = gr.Dropdown(
             choices=list(shared_choices),
-            value=shared_choices[0],
+            value=default_model,
             label="Model",
         )
         prompt = gr.Textbox(
@@ -130,18 +133,21 @@ def build_demo():
             concurrency_id="transcription_jobs",
         )
         provider.change(
-            lambda value: gr.update(
-                choices=list(
-                    live_model_choices_cached(value) or model_choices_for(value)
-                ),
-                value=(live_model_choices_cached(value) or model_choices_for(value))[0],
-            ),
+            lambda value: _model_dropdown_update(value, settings.model),
             inputs=provider,
             outputs=[model],
             api_visibility="private",
         )
     demo.queue(default_concurrency_limit=1, status_update_rate="auto")
     return demo
+
+
+def _model_dropdown_update(provider: str, preferred: str):
+    import gradio as gr
+
+    choices = list(live_model_choices_cached(provider) or model_choices_for(provider))
+    value = preferred if preferred in choices else choices[0]
+    return gr.update(choices=choices, value=value)
 
 
 if __name__ == "__main__":  # pragma: no cover

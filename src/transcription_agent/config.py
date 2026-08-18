@@ -15,7 +15,7 @@ class Settings:
     """Runtime settings for CLI, UI, and provider orchestration."""
 
     provider_order: tuple[str, ...] = ("polza", "openrouter", "gemini")
-    model: str = "google/gemini-2.5-flash"
+    model: str = "google/gemini-3.1-flash-lite"
     chunk_seconds: int = 0
     output_dir: Path = Path(".transcriptions")
     database_path: Path = Path(".transcriptions/jobs.sqlite3")
@@ -25,6 +25,7 @@ class Settings:
     polza_proxy: str = ""
     openrouter_proxy: str = ""
     gemini_proxy: str = ""
+    upload_timeout_seconds: float = 30.0
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = ".env") -> "Settings":
@@ -45,7 +46,7 @@ class Settings:
         chunk_seconds = int(os.getenv("TRANSCRIPTION_CHUNK_SECONDS", "0"))
         return cls(
             provider_order=order,
-            model=os.getenv("TRANSCRIPTION_MODEL", "google/gemini-2.5-flash"),
+            model=os.getenv("TRANSCRIPTION_MODEL", "google/gemini-3.1-flash-lite"),
             chunk_seconds=chunk_seconds,
             output_dir=Path(os.getenv("TRANSCRIPTION_OUTPUT_DIR", ".transcriptions")),
             database_path=Path(
@@ -58,15 +59,33 @@ class Settings:
             polza_proxy=os.getenv("TRANSCRIPTION_POLZA_PROXY", "").strip(),
             openrouter_proxy=os.getenv("TRANSCRIPTION_OPENROUTER_PROXY", "").strip(),
             gemini_proxy=os.getenv("TRANSCRIPTION_GEMINI_PROXY", "").strip(),
+            upload_timeout_seconds=float(
+                os.getenv("TRANSCRIPTION_UPLOAD_TIMEOUT", "30") or "30"
+            ),
         )
 
     def provider_proxy(self, provider: str) -> str:
-        """Per-provider proxy; falls back to the global proxy when unset."""
+        """Per-provider proxy; an explicit empty env var stays empty.
+
+        TRANSCRIPTION_<PROVIDER>_PROXY, when present in the environment
+        (even as an empty string), wins over TRANSCRIPTION_PROXY. That is
+        how OpenRouter stays direct: .env sets TRANSCRIPTION_OPENROUTER_PROXY=
+        so it does not inherit Polza SOCKS. A missing per-provider key still
+        falls back to the global proxy.
+        """
+        key = provider.strip().lower()
+        env_name = {
+            "polza": "TRANSCRIPTION_POLZA_PROXY",
+            "openrouter": "TRANSCRIPTION_OPENROUTER_PROXY",
+            "gemini": "TRANSCRIPTION_GEMINI_PROXY",
+        }.get(key)
+        if env_name is not None and env_name in os.environ:
+            return os.environ[env_name].strip()
         per_provider = {
             "polza": self.polza_proxy,
             "openrouter": self.openrouter_proxy,
             "gemini": self.gemini_proxy,
-        }.get(provider.strip().lower(), "")
+        }.get(key, "")
         return per_provider or self.proxy
 
     def validate(self) -> None:
@@ -78,3 +97,5 @@ class Settings:
             raise ValueError("TRANSCRIPTION_MODEL must not be empty")
         if self.max_output_tokens <= 0:
             raise ValueError("TRANSCRIPTION_MAX_OUTPUT_TOKENS must be positive")
+        if self.upload_timeout_seconds < 0:
+            raise ValueError("TRANSCRIPTION_UPLOAD_TIMEOUT must not be negative")

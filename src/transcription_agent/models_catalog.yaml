@@ -1,73 +1,139 @@
 # Offline VLM model catalog (fallback when live discovery is unreachable).
 # Canonical shape: models-first, each model lists its supported providers.
 # price: estimated USD per 1M input tokens (used for cheapest-first ranking).
-# Capability note: audio-from-video is model-specific on OpenRouter. Verified
-# on a real meeting capture (2026-08-17): minimax/minimax-m3 and
-# qwen/qwen3.6-plus transcribe speech from inline video; moonshotai/kimi-k3 and
-# z-ai/glm-4.6v are vision-only; qwen/qwen3.8-max and stepfun/step-3.7-flash
-# report no audible audio. Gemini models work normally but are region-gated:
-# reachable from a western egress (e.g. Hugging Face Spaces) and rejected from
-# RU-egress machines, so keep them in the roster.
+# Capability note: audio-from-video is model-specific. Ratings are model-level
+# (same across Polza/OpenRouter/Gemini). Rank: quality, then price, then speed.
+# 2026-08-18 VPN-off Polza 60s probe recovered the gold greeting on every
+# advertised audio+video Gemini except google/gemini-2.5-flash SOCKS upload
+# (empty speech; other three cells gold). 2026-08-19 5-minute Polza clip:
+# google/gemini-3.1-flash-lite is the default (fastest strong usable);
+# google/gemini-2.5-flash is the cheapest usable 5-minute job ($0.0034) with
+# mixed reliability. google/gemini-2.5-flash-lite hallucinated an hour of
+# "Да." (3453 segments). xiaomi/mimo-v2.5 returned empty speech. Chinese VLMs
+# on Polza (Qwen, MiniMax, Kimi, GLM, Ernie, StepFun) do not advertise
+# audio+video, so they stay excluded. openai/gpt-5.2 and gpt-5.4 advertise
+# audio+video but Polza returns 400 no video endpoints. Claude: same 400.
+# Muse Spark: OpenRouter 403 missing 18+ attestation (account gate).
+# OpenRouter Gemini: 403 TOS from this RU/VPN account; keep in roster for
+# native western hosting (Hugging Face Spaces). OpenRouter must stay direct;
+# pointing it at the Polza SOCKS host is an invalid route. Gemini models are
+# region-gated: reachable from a western egress and rejected from RU-egress
+# machines, so keep them in the roster.
 # Fields:
 #   tested: true       verified to transcribe speech from video (evidence-grounded
 #                      primer; these always appear first/kept in the union).
-#   excluded: true     tested and found unsuitable for transcription (vision-only
-#                      or no audible audio); dropped from selectors even if live
-#                      discovery reports them as media-capable.
+#   excluded: true     verified unsuitable for transcription (tested vision-only,
+#                      no audible audio, or official docs confirm no audio+video
+#                      input); dropped from selectors even if live discovery
+#                      reports them as media-capable.
+#   russian_quality: strong|good|unknown  research grade for Russian speech;
+#                    strong means direct project evidence, good means documented
+#                    multilingual/audio support, unknown means no reliable
+#                    Russian transcription evidence yet.
+#   speed: fast|medium|slow|unknown  wall-clock bucket from the 5-minute Polza
+#                    clip (fast <30s, medium 30-90s, slow >90s).
+#   speed_s: numeric median seconds used as the speed tie-breaker.
+#   reliability: high|mixed|low|unknown  documented, not used in ranking.
+# Ranking: tested, russian_quality, price, speed_s.
 models:
   baidu/ernie-4.5-vl-424b-a47b:
     price: 0.8
     providers: [polza]
-  gemini-2.5-flash:
-    price: 0.3
-    providers: [gemini]
-  gemini-2.5-pro:
-    price: 1.25
-    providers: [gemini]
-  gemini-3-flash-preview:
-    price: 0.1
-    providers: [gemini]
-  gemini-3.1-flash-lite-preview:
-    price: 0.4
-    providers: [gemini]
-  gemini-3.1-pro-preview:
-    price: 1.25
-    providers: [gemini]
-  gemini-3.5-flash-lite:
-    price: 0.05
-    providers: [gemini]
-  gemini-3.6-flash:
-    price: 0.1
-    providers: [gemini]
-  gemini-omni-video:
-    price: 1.5
-    providers: [polza, openrouter]
+    excluded: true
+  # Gemini ids are canonical google/gemini-*. Direct Gemini strips the
+  # google/ prefix on API calls. Bare gemini-* twins are merged here.
   google/gemini-2.5-flash:
     price: 0.3
-    providers: [polza, openrouter]
+    providers: [gemini, polza, openrouter]
     tested: true
+    russian_quality: strong
+    speed: fast
+    speed_s: 25.8
+    reliability: mixed
+  google/gemini-2.5-flash-lite:
+    price: 0.05
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: good
+    speed: slow
+    speed_s: 122.9
+    reliability: low
+  google/gemini-2.5-pro:
+    price: 1.25
+    providers: [gemini, polza]
+    tested: true
+    russian_quality: strong
+    speed: slow
+    speed_s: 114.3
+    reliability: high
   google/gemini-3-flash-preview:
     price: 0.1
-    providers: [polza, openrouter]
+    providers: [gemini, polza, openrouter]
+    russian_quality: good
+  google/gemini-3.1-flash-lite:
+    price: 0.05
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: strong
+    speed: fast
+    speed_s: 13.1
+    reliability: high
+  google/gemini-3.1-flash-lite-preview:
+    price: 0.4
+    providers: [gemini]
+    russian_quality: good
   google/gemini-3.1-pro-preview:
     price: 1.25
-    providers: [polza, openrouter]
+    providers: [gemini, polza, openrouter]
+    russian_quality: good
+  google/gemini-3.5-flash:
+    price: 0.3
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: strong
+    speed: medium
+    speed_s: 43.0
+    reliability: high
   google/gemini-3.5-flash-lite:
     price: 0.05
-    providers: [polza, openrouter]
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: strong
+    speed: fast
+    speed_s: 25.7
+    reliability: high
   google/gemini-3.6-flash:
     price: 0.1
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: strong
+    speed: medium
+    speed_s: 44.0
+    reliability: high
+  google/gemini-3.7-flash:
+    price: 0.15
+    providers: [gemini, polza, openrouter]
+    tested: true
+    russian_quality: strong
+    speed: fast
+    speed_s: 26.1
+    reliability: high
+  google/gemini-omni-video:
+    price: 1.5
     providers: [polza, openrouter]
+    excluded: true
   minimax/minimax-m2.7:
     price: 0.4
     providers: [polza]
+    excluded: true
   minimax/minimax-m3:
     price: 0.6
     providers: [polza, openrouter]
-    tested: true
+    excluded: true
   moonshotai/kimi-k2.6:
     price: 0.4
     providers: [polza]
+    excluded: true
   moonshotai/kimi-k3:
     price: 0.6
     providers: [polza, openrouter]
@@ -75,35 +141,55 @@ models:
   qwen/qwen2.5-vl-72b-instruct:
     price: 0.4
     providers: [polza]
+    excluded: true
   qwen/qwen3-vl-235b-a22b-instruct:
     price: 0.6
     providers: [polza]
+    excluded: true
   qwen/qwen3-vl-32b-instruct:
     price: 0.15
     providers: [polza, openrouter]
+    excluded: true
   qwen/qwen3-vl-8b-instruct:
     price: 0.05
     providers: [polza]
+    excluded: true
   qwen/qwen3.6-flash:
     price: 0.1
     providers: [polza]
+    excluded: true
   qwen/qwen3.6-plus:
     price: 0.4
     providers: [polza, openrouter]
-    tested: true
+    excluded: true
   qwen/qwen3.7-max:
     price: 0.8
     providers: [polza]
+    excluded: true
+
+  qwen/qwen3.8-max:
+    price: 0.8
+    providers: [polza, openrouter]
+    excluded: true
   stepfun/step-3.7-flash:
     price: 0.1
     providers: [polza]
+    excluded: true
   xiaomi/mimo-v2.5-pro:
     price: 0.6
     providers: [polza]
+    excluded: true
   xiaomi/mimo-v2.5:
     price: 0.14
     providers: [polza, openrouter]
     tested: true
+    russian_quality: good
+    speed: medium
+    speed_s: 85.8
+    reliability: mixed
+  xiaomi/qwens-v2.5:
+    price: 0.14
+    providers: [polza, openrouter]
   z-ai/glm-4.6v:
     price: 0.15
     providers: [polza]
@@ -111,9 +197,48 @@ models:
   z-ai/glm-5.1:
     price: 0.5
     providers: [polza]
+    excluded: true
   z-ai/glm-5.2:
     price: 0.7
     providers: [polza, openrouter]
+    excluded: true
   z-ai/glm-5v-turbo:
     price: 0.2
     providers: [polza]
+    excluded: true
+  anthropic/claude-haiku-4.5:
+    price: 1.0
+    providers: [polza, openrouter]
+    excluded: true
+  anthropic/claude-sonnet-4.5:
+    price: 3.0
+    providers: [polza, openrouter]
+    excluded: true
+  anthropic/claude-sonnet-4.6:
+    price: 3.0
+    providers: [polza, openrouter]
+    excluded: true
+  anthropic/claude-opus-4.5:
+    price: 5.0
+    providers: [polza, openrouter]
+    excluded: true
+  anthropic/claude-opus-4.6:
+    price: 5.0
+    providers: [polza, openrouter]
+    excluded: true
+  meta/muse-spark-1.1:
+    price: 0.2
+    providers: [openrouter]
+    excluded: true
+  meta/muse-spark-1.2:
+    price: 0.2
+    providers: [openrouter]
+    excluded: true
+  openai/gpt-5.2:
+    price: 5.0
+    providers: [polza]
+    excluded: true
+  openai/gpt-5.4:
+    price: 5.0
+    providers: [polza]
+    excluded: true

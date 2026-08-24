@@ -64,7 +64,7 @@ the dependency source of truth.
 - `registry.py` — SQLite job state.
 - `artifacts.py` — downloadable ZIP packages with manifest and hashes.
 - `app.py` — Gradio UI and Hugging Face entrypoint.
-- `skills/video-transcription/` — reusable prompt and agent skill.
+- `.agents/skills/video-transcription/` — reusable prompt and agent skill.
 
 ## Provider behavior
 

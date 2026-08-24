@@ -14,5 +14,8 @@ Model-level ratings are shared across Polza, OpenRouter, and Gemini. Selectors s
 | google/gemini-2.5-flash-lite | good | 0.05 | slow (123s) | low | 5-min hallucinated 3453 "Да." lines |
 | xiaomi/mimo-v2.5 | good | 0.14 | medium (86s) | mixed | gold at 60s, empty speech at 5 min |
 
-Excluded: Qwen 3.6/3.7 and MiniMax M3 (video, no audio), Claude/GPT (400 no video endpoints), Muse Spark (OpenRouter 18+ gate).
+## Cost reporting
 
+Costs are reported per run in USD. Polza reports `cost_rub` (rubles), which is authoritative and converted via `POLZA_RUB_TO_USD_RATE` (default 90); never treat it as USD. OpenRouter reports `cost` in USD. Direct Gemini does not return a comparable cost in the API response, so its spending is only visible on the Gemini dashboard.
+
+Excluded: Qwen 3.6/3.7 and MiniMax M3 (video, no audio), Claude/GPT (400 no video endpoints), Muse Spark (OpenRouter 18+ gate).

@@ -23,9 +23,8 @@ Set per-provider proxies via `TRANSCRIPTION_POLZA_PROXY`, `TRANSCRIPTION_OPENROU
 
 ## Roster
 
-Model-level ratings are shared across Polza, OpenRouter, and Gemini: selectors rank tested speech-from-video, then quality, then price, then speed. The maintained ranks and exclusions are in [references/model-roster.md](references/model-roster.md); the live source of truth is `uv run transcription-agent models --provider polza`.
+Model-level ratings are shared across Polza, OpenRouter, and Gemini: selectors rank tested speech-from-video, then quality, then price, then speed. The maintained ranks, exclusions, and per-provider cost reporting are in [references/model-roster.md](references/model-roster.md); the live source of truth is `uv run transcription-agent models --provider polza`.
 
 ## Good to know
 
 Do not re-probe Qwen, MiniMax, Claude, Muse, or GPT for speech unless Polza advertises audio+video on those ids. Temporary chunks and remote provider files are disposable; never commit them.
-

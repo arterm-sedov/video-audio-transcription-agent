@@ -15,7 +15,7 @@ Turn a local video or audio file into a chronological, speaker-attributed transc
 
 ## Attribution
 
-Use the canonical prompt at [references/prompts/transcription.md](references/prompts/transcription.md). Treat any visible active-speaker cue (green border, highlight, outline, focus box) as primary evidence; use a displayed name as the strongest label, voice as a secondary cue, and `SpeakerN` when ambiguous. Never guess an identity.
+Use the canonical prompt at [references/prompt-transcription.md](references/prompt-transcription.md). Treat any visible active-speaker cue (green border, highlight, outline, focus box) as primary evidence; use a displayed name as the strongest label, voice as a secondary cue, and `SpeakerN` when ambiguous. Never guess an identity.
 
 ## Provider routing
 

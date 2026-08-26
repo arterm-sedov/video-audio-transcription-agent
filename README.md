@@ -95,7 +95,7 @@ Live selectors keep evidence-tested speech-from-video models first, ranked quali
 
 ## Skill
 
-Load [`.agents/skills/transcribe-video/SKILL.md`](.agents/skills/transcribe-video/SKILL.md) when an agent needs the transcription workflow. The canonical prompt is [`.agents/skills/transcribe-video/references/prompts/transcription.md`](.agents/skills/transcribe-video/references/prompts/transcription.md).
+Load [`.agents/skills/transcribe-video/SKILL.md`](.agents/skills/transcribe-video/SKILL.md) when an agent needs the transcription workflow. The canonical prompt is [`.agents/skills/transcribe-video/references/prompt-transcription.md`](.agents/skills/transcribe-video/references/prompt-transcription.md).
 
 The prompt requires:
 

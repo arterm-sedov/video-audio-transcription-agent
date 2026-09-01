@@ -15,7 +15,7 @@ class Settings:
     """Runtime settings for CLI, UI, and provider orchestration."""
 
     provider_order: tuple[str, ...] = ("polza", "openrouter", "gemini")
-    model: str = "google/gemini-3.1-flash-lite"
+    model: str = "google/gemini-2.5-flash"
     chunk_seconds: int = 0
     output_dir: Path = Path(".transcriptions")
     database_path: Path = Path(".transcriptions/jobs.sqlite3")
@@ -46,7 +46,7 @@ class Settings:
         chunk_seconds = int(os.getenv("TRANSCRIPTION_CHUNK_SECONDS", "0"))
         return cls(
             provider_order=order,
-            model=os.getenv("TRANSCRIPTION_MODEL", "google/gemini-3.1-flash-lite"),
+            model=os.getenv("TRANSCRIPTION_MODEL", "google/gemini-2.5-flash"),
             chunk_seconds=chunk_seconds,
             output_dir=Path(os.getenv("TRANSCRIPTION_OUTPUT_DIR", ".transcriptions")),
             database_path=Path(

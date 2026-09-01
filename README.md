@@ -91,7 +91,7 @@ Provider reachability depends on the IP region the request egresses from:
 
 The provider chain retries and falls back automatically, so a job completes through whichever provider is reachable from the current egress IP. On Hugging Face Spaces, OpenRouter and Gemini are the natural choices; on a Russian-local host, Polza is the natural choice.
 
-Live selectors keep evidence-tested speech-from-video models first, ranked quality then price then speed (`google/gemini-3.1-flash-lite` default; cheapest usable 5-minute job `google/gemini-2.5-flash` with mixed reliability; `google/gemini-2.5-flash-lite` and `xiaomi/mimo-v2.5` demoted after the 5-minute clip). Dead ends stay excluded: Qwen/MiniMax vision-only on Polza, Claude no-video endpoints, Muse Spark 18+ attestation, VL/Kimi/GLM/Ernie. Live discovery only adds models whose provider metadata lists both audio and video input. Ratings are model-level and shared across Polza, OpenRouter, and Gemini.
+Live selectors keep evidence-tested speech-from-video models first, ranked quality then price then speed (`google/gemini-3.1-flash-lite` remains selector rank 1; `google/gemini-2.5-flash` is the configured default after successful recent full-recording use; it remains the cheapest usable 5-minute candidate with mixed historical reliability; `google/gemini-2.5-flash-lite` and `xiaomi/mimo-v2.5` are demoted after the 5-minute clip). Dead ends stay excluded: Qwen/MiniMax vision-only on Polza, Claude no-video endpoints, Muse Spark 18+ attestation, VL/Kimi/GLM/Ernie. Live discovery only adds models whose provider metadata lists both audio and video input. Ratings are model-level and shared across Polza, OpenRouter, and Gemini.
 
 ## Skill
 

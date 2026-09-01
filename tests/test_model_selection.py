@@ -18,11 +18,11 @@ def test_cli_model_flag_replaces_settings() -> None:
     assert settings.model != updated.model
 
 
-def test_default_model_is_gemini_31_flash_lite(monkeypatch) -> None:
+def test_default_model_is_gemini_25_flash(monkeypatch) -> None:
     monkeypatch.delenv("TRANSCRIPTION_MODEL", raising=False)
-    assert Settings().model == "google/gemini-3.1-flash-lite"
+    assert Settings().model == "google/gemini-2.5-flash"
     settings = Settings.from_env(None)
-    assert settings.model == "google/gemini-3.1-flash-lite"
+    assert settings.model == "google/gemini-2.5-flash"
 
 
 def test_configured_providers_normalize_model_per_provider(monkeypatch) -> None:

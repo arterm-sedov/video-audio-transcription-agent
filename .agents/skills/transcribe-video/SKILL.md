@@ -9,7 +9,7 @@ Turn a local video or audio file into a chronological, speaker-attributed transc
 
 ## Run it
 
-- Default model: `google/gemini-3.1-flash-lite`. Default provider order comes from `TRANSCRIPTION_PROVIDER_ORDER` (Polza, OpenRouter, Gemini).
+- Default model: `google/gemini-2.5-flash`. Default provider order comes from `TRANSCRIPTION_PROVIDER_ORDER` (Polza, OpenRouter, Gemini).
 - CLI: `uv run transcription-agent transcribe <media> --formats markdown` writes `<source>_transcription.md` beside the media. Add `--formats json,srt,vtt,zip` for more; `--output-md <name>` renames the Markdown.
 - GUI: run `app.py`; it always writes Markdown, JSON, SRT, VTT, and a ZIP.
 

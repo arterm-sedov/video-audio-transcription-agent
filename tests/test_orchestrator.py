@@ -9,7 +9,7 @@ import pytest
 import transcription_agent.orchestrator as orch
 from transcription_agent.config import Settings
 from transcription_agent.costs import Usage
-from transcription_agent.orchestrator import TranscriptionService
+from transcription_agent.orchestrator import TranscriptionService, parse_segments
 from transcription_agent.providers import ProviderResult
 from transcription_agent.upload_adapters import MediaRef, UploadDeclined
 
@@ -46,7 +46,9 @@ class _RecordingProvider:
         self.url_calls = 0
         self.base64_calls = 0
 
-    def transcribe_media(self, ref: MediaRef, prompt: str, media_path: str = "") -> ProviderResult:
+    def transcribe_media(
+        self, ref: MediaRef, prompt: str, media_path: str = ""
+    ) -> ProviderResult:
         self.url_calls += 1
         if self.remaining_failures > 0:
             self.remaining_failures -= 1
@@ -158,9 +160,7 @@ def test_hung_upload_times_out_and_falls_back_to_base64(
     adapter = _HangingAdapter()
     provider = _RecordingProvider("polza")
     _patch(monkeypatch, {"polza": adapter}, {"polza": provider})
-    settings = replace(
-        _settings(tmp_path, ("polza",)), upload_timeout_seconds=0.3
-    )
+    settings = replace(_settings(tmp_path, ("polza",)), upload_timeout_seconds=0.3)
     service = TranscriptionService(settings)
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"fake")
@@ -171,3 +171,18 @@ def test_hung_upload_times_out_and_falls_back_to_base64(
     assert provider.url_calls == 0
     assert transcript.provider == "polza"
     assert any("upload timeout" in note for note in transcript.notes)
+
+
+def test_parse_segments_splits_collapsed_timestamped_line_without_loss() -> None:
+    text = (
+        "[00:10] **Alice**: first words. [00:33] Bob: second words. "
+        "[00:37] **Alice**: final words."
+    )
+
+    segments = parse_segments(text)
+
+    assert [(s.start, s.speaker, s.text) for s in segments] == [
+        (10, "Alice", "first words."),
+        (33, "Bob", "second words."),
+        (37, "Alice", "final words."),
+    ]

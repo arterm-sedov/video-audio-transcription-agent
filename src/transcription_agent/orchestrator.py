@@ -12,7 +12,10 @@ from .providers import PROMPT_TEMPLATE, configured_providers
 from .timestamps import parse_model_timestamp
 from .upload_adapters import MediaRef, UploadDeclined, build_upload_adapter
 
-_LINE = re.compile(r"^\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*(.*)$")
+_LINE = re.compile(
+    r"\[(?P<stamp>\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?)\]"
+    r"\s*(?:\*\*)?(?P<speaker>[^:*\n]+?)(?:\*\*)?:\s*"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +36,23 @@ def _upload_with_timeout(adapter, path: str, timeout_seconds: float):
         return future.result(timeout=timeout_seconds)
     except concurrent.futures.TimeoutError as exc:
         future.cancel()
-        raise TimeoutError(
-            f"upload timeout after {timeout_seconds:g}s"
-        ) from exc
+        raise TimeoutError(f"upload timeout after {timeout_seconds:g}s") from exc
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
 
 def parse_segments(text: str) -> list[Segment]:
-    """Parse the stable line format emitted by the transcription prompt."""
+    """Parse turns, splitting provider-collapsed timestamped lines losslessly."""
     segments = []
     for line in text.splitlines():
-        match = _LINE.match(line)
-        if match:
-            stamp, speaker, words = match.groups()
+        matches = list(_LINE.finditer(line))
+        for index, match in enumerate(matches):
+            words_end = (
+                matches[index + 1].start() if index + 1 < len(matches) else len(line)
+            )
+            stamp = match.group("stamp")
+            speaker = match.group("speaker")
+            words = line[match.end() : words_end]
             segments.append(
                 Segment(parse_model_timestamp(stamp), 0, speaker.strip(), words.strip())
             )
@@ -120,10 +126,10 @@ class TranscriptionService:
                                 f"{provider_name} upload({Path(path).name}): {up_exc}"
                             )
                             uploaded = None
-                    if uploaded is not None and hasattr(
-                        provider, "transcribe_media"
-                    ):
-                        result = provider.transcribe_media(uploaded, active_prompt, path)
+                    if uploaded is not None and hasattr(provider, "transcribe_media"):
+                        result = provider.transcribe_media(
+                            uploaded, active_prompt, path
+                        )
                     else:
                         result = provider.transcribe(path, active_prompt)
                     selected_provider = provider_name

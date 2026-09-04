@@ -13,20 +13,9 @@ from typing import Protocol
 from .costs import Usage, normalize_usage
 from .upload_adapters import MediaRef
 
-PROMPT_TEMPLATE = """Transcribe all spoken dialogue in this video clip. The clip covers original-video time {start} through {end}.
-
-Output requirements:
-- Return only a chronological transcript.
-- Put EXACTLY ONE speaker turn per line, with a hard newline between every turn.
-- Use this exact line format: [MM:SS] Speaker: words
-- Never concatenate multiple turns onto one line.
-- Timestamps are relative to this clip; do not use hours.
-- Keep speaker labels consistent using any visible active-speaker indicator (green frame, highlighted frame, colored outline, focus box, or equivalent).
-- Use actual participant names when displayed; otherwise use Speaker 1, Speaker 2, etc.
-- Use voice characteristics as a secondary cue.
-- If visual and audio evidence are ambiguous, use an uncertain SpeakerN label rather than guessing.
-- Do not summarize, skip, or paraphrase. Use [inaudible] only when necessary.
-- Begin with a short speaker key only if useful."""
+PROMPT_TEMPLATE = (
+    Path(__file__).with_name("prompt-transcription.md").read_text(encoding="utf-8")
+)
 
 
 class Provider(Protocol):

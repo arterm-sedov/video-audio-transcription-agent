@@ -27,6 +27,18 @@ and Hugging Face Gradio Spaces.
   key inherits TRANSCRIPTION_PROXY.
 - Size chunks from the model's context window and worst-case token-per-second
   rate; treat fixed chunk seconds as an explicit override, not the default.
+- If an auto-sized chunk is rejected as an invalid/oversized provider request,
+  retry the affected job or interval with a smaller explicit bounded chunk size;
+  do not turn that workaround into the global default.
+- When regenerating or comparing a transcript, never overwrite an existing
+  transcript implicitly. Use a distinct output name and verify the old file's
+  hash before and after the run.
+- Do not start a parallel or identical retry while a provider attempt is still
+  live. Stop it once when authorized or let its bounded failure resolve; a
+  client-side timeout/kill may not cancel upstream work or its billing.
+- Keep the canonical prompt as the only prompt resource. A custom `--prompt`
+  may add task-specific context only when it preserves the canonical prompt's
+  completeness, visual-attribution, and output-format rules.
 - Never hardcode hosts, addresses, credentials, or account identifiers in
   source or committed docs; routes and proxies come from per-provider
   environment variables.
@@ -64,7 +76,10 @@ the dependency source of truth.
 - `registry.py` — SQLite job state.
 - `artifacts.py` — downloadable ZIP packages with manifest and hashes.
 - `app.py` — Gradio UI and Hugging Face entrypoint.
-- `.agents/skills/transcribe-video/` — reusable prompt and agent skill.
+- `prompt-transcription.md` — the single canonical prompt loaded by providers
+  and referenced by the skill; do not create a second prompt resource.
+- `.agents/skills/transcribe-video/` — reusable workflow and agent skill that
+  links to the canonical prompt and these repository utilities.
 
 ## Provider behavior
 
@@ -84,12 +99,36 @@ the UI/CLI.
 Polza `cost_rub` is authoritative and must be converted with
 `POLZA_RUB_TO_USD_RATE`; never treat it as USD.
 
+OpenRouter video requests use inline base64 and can hit a provider payload
+limit even when the model context window is large. If OpenRouter returns a
+payload-size error, use a smaller explicit per-job chunk override; do not
+reuse the same auto-sized chunk or route the request through Polza SOCKS.
+
 ## Speaker attribution
 
 Use any visible active-speaker cue—green border, highlighted frame, colored
 outline, focus box, or equivalent—as the primary visual signal. Voice
 diarization is secondary. If evidence conflicts or is absent, use an explicit
 `SpeakerN` label instead of guessing an identity.
+
+Treat provider-produced names as candidate aliases. Before delivery, inspect
+frames at the candidate's turns and nearby moments, map aliases to one
+canonical displayed name when the current green active-speaker cue supports
+it, and preserve the displayed script. Normalize only speaker labels; never
+rewrite spoken words. Do not retain phonetic/ASR variants, OCR errors,
+truncations, or company-suffixed variants for the same visually confirmed
+participant. Use `SpeakerN` when frames do not establish identity or exact
+spelling. OCR may support reading a name but is not authoritative over the
+current active border and layout.
+
+Do not assume a fixed meeting-grid geometry or that a cue has one fixed color,
+shape, contrast, or location. Inspect an actual representative frame, verify
+the tile bounds and current layout, and interpret every color/brightness
+change, outline, background, avatar ring/illumination, border, badge, status
+icon, or label according to whether it identifies the active speaker. Cues may
+appear on any side, in the center, around an avatar, or around a tile. A cue
+that is an icon is not thereby invalid; discard it only when it is demonstrably
+unrelated to speaker activity.
 
 ## Media and portability
 
@@ -99,6 +138,23 @@ diarization is secondary. If evidence conflicts or is absent, use an explicit
 - Use PyAV probing when `ffprobe` is unavailable.
 - Temporary chunks belong under the configured output directory and must not be committed.
 - Preserve audio when creating video chunks.
+
+## Transcript gap verification
+
+A large timestamp gap is not by itself evidence of silence or omitted speech:
+a single speaker turn may span the interval while the model emits only its
+start timestamp. When a gap looks suspicious, extract a short recheck clip
+with padding on both boundaries, run the canonical transcription prompt, and
+map the clip-relative timestamps back to the original timeline. Use audio
+silence/energy analysis as supporting evidence. If the recheck contains speech,
+do not invent a silence marker or split a continuous turn solely because its
+timestamps are sparse. If it proves that speech is absent from the main
+transcript, replace only the affected interval, preserve original offsets, and
+deduplicate overlap from the padded retry.
+
+Do not repeat an identical provider request after a failure. Change a
+diagnostic variable (for example, the affected interval, bounded chunk size,
+transport, or model), or stop and report the unchanged failure.
 
 ## Gradio/Hugging Face
 

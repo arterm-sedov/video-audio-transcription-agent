@@ -95,16 +95,20 @@ Live selectors keep evidence-tested speech-from-video models first, ranked quali
 
 ## Skill
 
-Load [`.agents/skills/transcribe-video/SKILL.md`](.agents/skills/transcribe-video/SKILL.md) when an agent needs the transcription workflow. The canonical prompt is [`.agents/skills/transcribe-video/references/prompt-transcription.md`](.agents/skills/transcribe-video/references/prompt-transcription.md).
+Load [`.agents/skills/transcribe-video/SKILL.md`](.agents/skills/transcribe-video/SKILL.md) when an agent needs the transcription workflow. The single canonical prompt is [`src/transcription_agent/prompt-transcription.md`](src/transcription_agent/prompt-transcription.md), used by the CLI/GUI and referenced by the skill.
 
 The prompt requires:
 
+- every audible word by every speaker, without summarization, cleanup, or omission;
 - chronological speaker turns;
 - timestamps relative to each clip;
 - any active-speaker cue: border, highlight, outline, focus box, or equivalent;
+- a fresh visual/name mapping for each temporal portion, including screen-sharing layouts;
+- exactly one hard-newline-separated turn per timestamp, with no embedded timestamps;
+- a lossless retry/merge gate for collapsed lines, empty output, unexplained gaps, and screen-share transitions;
 - voice evidence as a secondary signal;
 - `SpeakerN` when evidence is ambiguous;
-- no summary or paraphrase.
+- no summary, paraphrase, or silently skipped speech; speaker-label cleanup must not rewrite words.
 
 ## Gradio
 

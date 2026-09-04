@@ -2,14 +2,18 @@
 
 import logging
 import re
+import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from .config import Settings
+from .media import extract_label_checkpoints, extract_visual_checkpoints
 from .merge import merge_segments
 from .models import Segment, Transcript
+from .normalization import apply_label_mapping, parse_label_mapping
 from .progress import ProgressCallback, ProgressEvent, emit
 from .providers import PROMPT_TEMPLATE, configured_providers
-from .timestamps import parse_model_timestamp
+from .timestamps import format_timestamp, parse_model_timestamp
 from .upload_adapters import MediaRef, UploadDeclined, build_upload_adapter
 
 _LINE = re.compile(
@@ -18,6 +22,28 @@ _LINE = re.compile(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _accumulate_usage(total: dict, usage) -> None:
+    total["input_tokens"] += usage.input_tokens
+    total["output_tokens"] += usage.output_tokens
+    if usage.cost_usd is not None:
+        total["cost_usd"] += usage.cost_usd
+
+
+def _label_occurrences(transcript: Transcript) -> str:
+    return "\n".join(
+        f"[{format_timestamp(segment.start)}] {segment.speaker}"
+        for segment in transcript.segments
+    )
+
+
+def _first_label_times(transcript: Transcript) -> dict[str, float]:
+    """Use each observed label's first turn as focused visual evidence."""
+    times: dict[str, float] = {}
+    for segment in transcript.segments:
+        times.setdefault(segment.speaker, segment.start)
+    return times
 
 
 def _upload_with_timeout(adapter, path: str, timeout_seconds: float):
@@ -98,10 +124,33 @@ class TranscriptionService:
             progress, ProgressEvent("transcribing", "Starting transcription", 0, total)
         )
         total_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        all_visual_checkpoints = []
         for index, (offset, path) in enumerate(clips, 1):
             active_prompt = (prompt or PROMPT_TEMPLATE).format(
                 start="relative", end="relative"
             )
+            try:
+                visual_checkpoints = extract_visual_checkpoints(
+                    path,
+                    offset,
+                    self.settings.output_dir
+                    / "visual_checkpoints"
+                    / f"chunk_{index:04d}",
+                )
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                subprocess.CalledProcessError,
+            ) as visual_exc:
+                logger.warning(
+                    "optional visual checkpoints unavailable for %s: %s",
+                    Path(path).name,
+                    visual_exc,
+                )
+                visual_checkpoints = ()
+            all_visual_checkpoints.extend(visual_checkpoints)
             result = None
             uploaded: MediaRef | None = None
             for provider_name in self.settings.provider_order:
@@ -127,11 +176,26 @@ class TranscriptionService:
                             )
                             uploaded = None
                     if uploaded is not None and hasattr(provider, "transcribe_media"):
-                        result = provider.transcribe_media(
-                            uploaded, active_prompt, path
-                        )
+                        if visual_checkpoints:
+                            result = provider.transcribe_media(
+                                uploaded,
+                                active_prompt,
+                                path,
+                                visual_checkpoints=visual_checkpoints,
+                            )
+                        else:
+                            result = provider.transcribe_media(
+                                uploaded, active_prompt, path
+                            )
                     else:
-                        result = provider.transcribe(path, active_prompt)
+                        if visual_checkpoints:
+                            result = provider.transcribe(
+                                path,
+                                active_prompt,
+                                visual_checkpoints=visual_checkpoints,
+                            )
+                        else:
+                            result = provider.transcribe(path, active_prompt)
                     selected_provider = provider_name
                     break
                 except Exception as exc:  # noqa: BLE001 - provider fallback boundary
@@ -146,17 +210,14 @@ class TranscriptionService:
             if result is None:
                 raise RuntimeError("All providers failed: " + "; ".join(errors))
             chunks.append((offset, parse_segments(result.text)))
-            total_usage["input_tokens"] += result.usage.input_tokens
-            total_usage["output_tokens"] += result.usage.output_tokens
-            if result.usage.cost_usd is not None:
-                total_usage["cost_usd"] += result.usage.cost_usd
+            _accumulate_usage(total_usage, result.usage)
             emit(
                 progress,
                 ProgressEvent(
                     "transcribing", f"Completed clip {index}/{total}", index, total
                 ),
             )
-        return merge_segments(
+        transcript = merge_segments(
             source,
             chunks,
             duration=duration,
@@ -164,4 +225,65 @@ class TranscriptionService:
             provider=selected_provider,
             notes=tuple(errors),
             metadata={"usage": total_usage},
+        )
+        if not (
+            self.settings.speaker_normalization_enabled
+            and selected_provider
+            and all_visual_checkpoints
+        ):
+            return transcript
+        try:
+            label_checkpoints = extract_label_checkpoints(
+                source,
+                _first_label_times(transcript),
+                self.settings.output_dir / "visual_checkpoints" / "label_occurrences",
+            )
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            subprocess.CalledProcessError,
+        ) as visual_exc:
+            logger.warning("label checkpoints unavailable: %s", visual_exc)
+            label_checkpoints = ()
+        normalizer = getattr(
+            self.providers.get(selected_provider), "normalize_speaker_labels", None
+        )
+        if not callable(normalizer):
+            return transcript
+        labels = tuple(sorted({segment.speaker for segment in transcript.segments}))
+        try:
+            result = normalizer(
+                _label_occurrences(transcript),
+                labels,
+                label_checkpoints or tuple(all_visual_checkpoints),
+            )
+            _accumulate_usage(total_usage, result.usage)
+            mapping = parse_label_mapping(result.text, labels)
+        except Exception as exc:  # noqa: BLE001 - optional normalization boundary
+            errors.append(f"{selected_provider} speaker-label normalization: {exc}")
+            logger.warning("speaker-label normalization unavailable: %s", exc)
+            return replace(
+                transcript,
+                notes=tuple(errors),
+                metadata={
+                    **transcript.metadata,
+                    "usage": total_usage,
+                    "speaker_normalization": {"status": "failed", "mapping": {}},
+                },
+            )
+        metadata = {
+            **transcript.metadata,
+            "usage": total_usage,
+            "speaker_normalization": {
+                "status": "applied" if mapping else "no_change",
+                "mapping": mapping,
+            },
+        }
+        return replace(
+            transcript,
+            segments=apply_label_mapping(transcript.segments, mapping),
+            metadata=metadata,
+            notes=tuple(errors),
         )

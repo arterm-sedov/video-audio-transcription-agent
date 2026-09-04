@@ -1,27 +1,73 @@
 """Provider adapters for multimodal transcription."""
 
+import base64
 import logging
+import mimetypes
 import os
 import time
-
-logger = logging.getLogger(__name__)
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from .costs import Usage, normalize_usage
+from .media import VisualCheckpoint
 from .upload_adapters import MediaRef
+
+logger = logging.getLogger(__name__)
 
 PROMPT_TEMPLATE = (
     Path(__file__).with_name("prompt-transcription.md").read_text(encoding="utf-8")
 )
 
 
+def _checkpoint_metadata(checkpoint: VisualCheckpoint) -> str:
+    return (
+        "original-video time "
+        f"{checkpoint.original_seconds:.3f}s; "
+        f"clip-relative {checkpoint.relative_seconds:.3f}s; "
+        f"reason: {checkpoint.reason}"
+    )
+
+
+def _label_normalization_prompt(transcript_text: str, labels: tuple[str, ...]) -> str:
+    observed = "\n".join(f"- {label}" for label in labels)
+    return (
+        f"{PROMPT_TEMPLATE.format(start='relative', end='relative')}\n\n"
+        "LABEL_ONLY_NORMALIZATION mode: do not transcribe, summarize, or rewrite "
+        "the transcript. Inspect the supplied visual checkpoints and map only "
+        "clearly evidenced observed labels to one canonical observed label. "
+        "Return exactly one JSON object of the form "
+        '{"confidence": 0.0, "mapping": {"variant": "canonical"}}. '
+        "Include only mappings supported by clear evidence and omit uncertain "
+        "labels; confidence rates only the mappings you returned, not labels you "
+        "omitted. Keys and values must be copied exactly from the observed-label "
+        "list; do not invent names. This is an "
+        "override of the transcript-output rules above: write no Markdown fence, "
+        "explanation, or transcript; the first response character must be '{' and "
+        "the last must be '}'.\n\n"
+        f"Observed labels:\n{observed}\n\n"
+        f"Transcript label occurrences (timestamps and labels only):\n{transcript_text}"
+    )
+
+
 class Provider(Protocol):
     name: str
 
-    def transcribe(self, media_path: str, prompt: str) -> "ProviderResult": ...
+    def transcribe(
+        self,
+        media_path: str,
+        prompt: str,
+        *,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> "ProviderResult": ...
+
+    def normalize_speaker_labels(
+        self,
+        transcript_text: str,
+        labels: tuple[str, ...],
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> "ProviderResult": ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,48 +107,91 @@ class OpenAICompatibleProvider:
         )
 
     @staticmethod
-    def _content_from_ref(ref: MediaRef, prompt: str, media_path: str) -> list[dict]:
+    def _visual_content(
+        visual_checkpoints: tuple[VisualCheckpoint, ...],
+    ) -> list[dict]:
+        if not visual_checkpoints:
+            return []
+        content: list[dict] = [
+            {
+                "type": "text",
+                "text": "Supplementary visual checkpoints (video/audio remains authoritative):",
+            }
+        ]
+        for checkpoint in visual_checkpoints:
+            mime = mimetypes.guess_type(checkpoint.path.name)[0] or "image/png"
+            encoded = base64.b64encode(checkpoint.path.read_bytes()).decode("ascii")
+            content.append({"type": "text", "text": _checkpoint_metadata(checkpoint)})
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{encoded}"},
+                }
+            )
+        return content
+
+    @classmethod
+    def _content_from_ref(
+        cls,
+        ref: MediaRef,
+        prompt: str,
+        media_path: str,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> list[dict]:
+        visual_content = cls._visual_content(visual_checkpoints)
+
+        def with_visuals(content: list[dict]) -> list[dict]:
+            return [*content, *visual_content]
+
         if ref.kind == "url":
             if ref.value.startswith("data:"):
                 # data-URL reference: treat as video data url
-                return [
-                    {"type": "text", "text": prompt},
-                    {"type": "video_url", "video_url": {"url": ref.value}},
-                ]
+                return with_visuals(
+                    [
+                        {"type": "text", "text": prompt},
+                        {"type": "video_url", "video_url": {"url": ref.value}},
+                    ]
+                )
             # hosted url; audio supports input_audio url, video uses video_url url
             suffix = Path(media_path).suffix.lower()
             if suffix in {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac"}:
-                return [
+                return with_visuals(
+                    [
+                        {"type": "text", "text": prompt},
+                        {"type": "input_audio", "input_audio": {"url": ref.value}},
+                    ]
+                )
+            return with_visuals(
+                [
                     {"type": "text", "text": prompt},
-                    {"type": "input_audio", "input_audio": {"url": ref.value}},
+                    {"type": "video_url", "video_url": {"url": ref.value}},
                 ]
-            return [
-                {"type": "text", "text": prompt},
-                {"type": "video_url", "video_url": {"url": ref.value}},
-            ]
+            )
         # fallback to inline base64 (data_url / base64 / path)
-        import base64 as _b64
-        import mimetypes as _mt
-
-        mime = _mt.guess_type(media_path)[0] or "video/mp4"
+        mime = mimetypes.guess_type(media_path)[0] or "video/mp4"
         with open(media_path, "rb") as source:
-            encoded = _b64.b64encode(source.read()).decode()
+            encoded = base64.b64encode(source.read()).decode()
         data_url = f"data:{mime};base64,{encoded}"
         if mime.startswith("audio/"):
             audio_format = Path(media_path).suffix.lstrip(".") or "m4a"
-            return [
+            return with_visuals(
+                [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": encoded, "format": audio_format},
+                    },
+                ]
+            )
+        return with_visuals(
+            [
                 {"type": "text", "text": prompt},
-                {"type": "input_audio", "input_audio": {"data": encoded, "format": audio_format}},
+                {"type": "video_url", "video_url": {"url": data_url}},
             ]
-        return [
-            {"type": "text", "text": prompt},
-            {"type": "video_url", "video_url": {"url": data_url}},
-        ]
+        )
 
-    def transcribe_media(self, ref: MediaRef, prompt: str, media_path: str = "") -> ProviderResult:
-        """Transcribe a MediaRef (url/file_id) or fall back to inline base64."""
+    def _complete(self, content: list[dict]) -> ProviderResult:
         client = self._client()
-        content = self._content_from_ref(ref, prompt, media_path)
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
@@ -124,10 +213,47 @@ class OpenAICompatibleProvider:
             normalize_usage(self.name, usage_dict),
         )
 
-    def transcribe(self, media_path: str, prompt: str) -> ProviderResult:
+    def transcribe_media(
+        self,
+        ref: MediaRef,
+        prompt: str,
+        media_path: str = "",
+        *,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
+        """Transcribe a MediaRef (url/file_id) or fall back to inline base64."""
+        content = self._content_from_ref(ref, prompt, media_path, visual_checkpoints)
+        return self._complete(content)
+
+    def normalize_speaker_labels(
+        self,
+        transcript_text: str,
+        labels: tuple[str, ...],
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
+        """Return a JSON-only label mapping; never regenerate transcript text."""
+        content = [
+            {
+                "type": "text",
+                "text": _label_normalization_prompt(transcript_text, labels),
+            },
+            *self._visual_content(visual_checkpoints),
+        ]
+        return self._complete(content)
+
+    def transcribe(
+        self,
+        media_path: str,
+        prompt: str,
+        *,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
         """Transcribe media inlined as base64 (upload-unavailable fallback)."""
         return self.transcribe_media(
-            MediaRef("base64", "", self.name), prompt, media_path
+            MediaRef("base64", "", self.name),
+            prompt,
+            media_path,
+            visual_checkpoints=visual_checkpoints,
         )
 
 
@@ -160,8 +286,8 @@ class GeminiProvider:
             },
         )
 
-    def _generate(self, client, file_uri: str, prompt: str) -> ProviderResult:
-        """Generate content for a hosted file URI and normalize usage."""
+    def _generate_parts(self, client, parts) -> ProviderResult:
+        """Generate from already assembled multimodal parts and normalize usage."""
         try:
             from google.genai import types
         except ImportError as exc:  # pragma: no cover
@@ -170,12 +296,7 @@ class GeminiProvider:
             ) from exc
         response = client.models.generate_content(
             model=self.model,
-            contents=types.Content(
-                parts=[
-                    types.Part(file_data=types.FileData(file_uri=file_uri)),
-                    types.Part(text=prompt),
-                ]
-            ),
+            contents=types.Content(parts=parts),
             config=types.GenerateContentConfig(
                 temperature=0,
                 max_output_tokens=int(
@@ -189,12 +310,89 @@ class GeminiProvider:
             response.text or "", normalize_usage(self.name, usage_dict)
         )
 
-    def transcribe_media(self, ref: MediaRef, prompt: str, media_path: str = "") -> ProviderResult:
+    def _generate(
+        self,
+        client,
+        file_uri: str,
+        prompt: str,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
+        """Generate content for a hosted file URI and normalize usage."""
+        try:
+            from google.genai import types
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError(
+                "Install the providers extra for direct Gemini calls"
+            ) from exc
+        parts = [
+            types.Part(file_data=types.FileData(file_uri=file_uri)),
+            types.Part(text=prompt),
+        ]
+        if visual_checkpoints:
+            parts.append(
+                types.Part(
+                    text="Supplementary visual checkpoints (video/audio remains authoritative):"
+                )
+            )
+            for checkpoint in visual_checkpoints:
+                parts.append(types.Part(text=_checkpoint_metadata(checkpoint)))
+                parts.append(
+                    types.Part.from_bytes(
+                        data=checkpoint.path.read_bytes(), mime_type="image/png"
+                    )
+                )
+        return self._generate_parts(client, parts)
+
+    def transcribe_media(
+        self,
+        ref: MediaRef,
+        prompt: str,
+        media_path: str = "",
+        *,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
         """Transcribe a hosted MediaRef (url/file_id) via Gemini Files API."""
         client = self._client()
-        return self._generate(client, ref.as_url(), prompt)
+        return self._generate(client, ref.as_url(), prompt, visual_checkpoints)
 
-    def transcribe(self, media_path: str, prompt: str) -> ProviderResult:
+    def normalize_speaker_labels(
+        self,
+        transcript_text: str,
+        labels: tuple[str, ...],
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
+        """Return a JSON-only label mapping; never regenerate transcript text."""
+        try:
+            from google.genai import types
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError(
+                "Install the providers extra for direct Gemini calls"
+            ) from exc
+        parts = [
+            types.Part(text=_label_normalization_prompt(transcript_text, labels)),
+        ]
+        if visual_checkpoints:
+            parts.append(
+                types.Part(
+                    text="Supplementary visual checkpoints (video/audio remains authoritative):"
+                )
+            )
+            for checkpoint in visual_checkpoints:
+                parts.append(types.Part(text=_checkpoint_metadata(checkpoint)))
+                parts.append(
+                    types.Part.from_bytes(
+                        data=checkpoint.path.read_bytes(), mime_type="image/png"
+                    )
+                )
+        return self._generate_parts(self._client(), parts)
+
+    def transcribe(
+        self,
+        media_path: str,
+        prompt: str,
+        *,
+        visual_checkpoints: tuple[VisualCheckpoint, ...] = (),
+    ) -> ProviderResult:
         """Upload media inline, wait for ACTIVE, then generate (no adapter)."""
         client = self._client()
         uploaded = client.files.upload(file=media_path)
@@ -211,7 +409,7 @@ class GeminiProvider:
                 time.sleep(self.poll_seconds)
             if active is None:
                 raise TimeoutError("Gemini file did not become ACTIVE")
-            return self._generate(client, active.uri, prompt)
+            return self._generate(client, active.uri, prompt, visual_checkpoints)
         finally:
             with suppress(Exception):
                 client.files.delete(name=uploaded.name)

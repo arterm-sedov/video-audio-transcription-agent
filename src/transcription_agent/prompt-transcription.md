@@ -8,7 +8,29 @@ Inspect the audio and the current video layout in every temporal portion of the 
 
 When screen sharing moves participant tiles to a sidebar or another compact layout, identify the current participant selected by the active cue there, regardless of its color, shape, contrast, or location; never carry a tile position forward from the previous layout and never mistake text or a person shown inside the shared application for the speaker. Copy a legible displayed name in its displayed script, without invented spellings, phonetic guesses, or unrelated company/UI text. If only a partial or conflicting name is visible, use SpeakerN until stronger visual evidence resolves it.
 
+Visual checkpoints and candidate events are supplementary evidence. A checkpoint
+label such as `[original-video time 00:22:14.000]` refers to the original media
+timeline; transcript timestamps still follow the requested clip-relative format.
+Inspect the attached still at that exact time and compare it with nearby
+checkpoints. Use frames before, at, and after a candidate event to determine
+whether the layout, participant membership, tile location, screen sharing, or
+active-speaker cue changed. FFmpeg scene-change timestamps are candidates only:
+they do not prove a speaker change, and a subtle active cue may change without
+triggering scene detection. Never use a candidate event to discard audio,
+create a silence marker, or move a transcript timestamp without checking the
+actual video and audio. When a layout changes, rebuild the speaker mapping
+from the current frame, including a sidebar or compact strip, and use every
+explicit cue regardless of color, shape, contrast, or position. Keep the
+video/audio pass lossless even when the still image is ambiguous.
+
 Speaker-name normalization is mandatory before the final transcript. Treat every name produced during the audio pass as a candidate alias, not as ground truth. For each candidate, inspect frames at its turns and nearby moments, using the current active-speaker cue and visible tile name to resolve aliases. When frames establish that variants such as phonetic misspellings, OCR errors, clipped names, or company-suffixed labels refer to one participant, replace them with one canonical displayed name consistently across the whole clip and all chunks. Do not retain several spellings for the same visually identified person. If frames do not establish the identity or exact spelling, use SpeakerN rather than selecting the most plausible name. This pass changes speaker labels only and must never change, shorten, or paraphrase the spoken words.
+
+If a later request explicitly says `LABEL_ONLY_NORMALIZATION`, do not
+transcribe or rewrite the supplied speech. Inspect only the supplied checkpoint
+images and label occurrences, and return the requested JSON mapping. Map a
+variant only when the current visual evidence clearly identifies it as the same
+participant; otherwise return an empty mapping. This mode may change labels only
+and must never change words, timestamps, segment count, or ordering.
 
 Output requirements:
 - Return only a chronological transcript.

@@ -64,7 +64,8 @@ the dependency source of truth.
 
 - `src/transcription_agent/models.py` — stable segment/transcript contracts.
 - `config.py` — environment-backed settings and validation.
-- `media.py` — FFmpeg/PyAV probing and portable chunk creation.
+- `media.py` — FFmpeg/PyAV probing, portable chunk creation, and bounded visual
+  checkpoints around periodic and scene-change candidates.
 - `chunking.py` — chunk planning driven by model context windows and token rates.
 - `limits.py` — per-model context-window resolution used by chunk planning.
 - `upload_adapters.py` — hosted media references (URL/file id) with graceful
@@ -72,6 +73,7 @@ the dependency source of truth.
 - `model_registry.py` / `models_catalog.py` — live and offline model discovery.
 - `providers.py` — Polza, direct Gemini, and OpenRouter adapters.
 - `orchestrator.py` — provider fallback, progress, parsing, and merging.
+- `normalization.py` — strict JSON mapping and label-only segment rewriting.
 - `exporters.py` — Markdown, JSON, SRT, and VTT outputs.
 - `registry.py` — SQLite job state.
 - `artifacts.py` — downloadable ZIP packages with manifest and hashes.
@@ -95,6 +97,13 @@ Polza and OpenRouter use the OpenAI-compatible multimodal contract. Direct
 Gemini uploads must be polled until the uploaded file is `ACTIVE` before
 generation. Provider errors must be retained in job metadata and surfaced in
 the UI/CLI.
+
+After a successful transcription, the orchestrator may make one label-only
+vision request using a bounded still at each observed label's first occurrence
+(with collected scene/layout checkpoints only as fallback). Accept only mappings
+between labels already observed in the transcript; apply them to speaker fields
+only. A failed or invalid normalization leaves words,
+timestamps, segment count, and ordering untouched and is recorded as a note.
 
 Polza `cost_rub` is authoritative and must be converted with
 `POLZA_RUB_TO_USD_RATE`; never treat it as USD.
@@ -129,6 +138,13 @@ icon, or label according to whether it identifies the active speaker. Cues may
 appear on any side, in the center, around an avatar, or around a tile. A cue
 that is an icon is not thereby invalid; discard it only when it is demonstrably
 unrelated to speaker activity.
+
+Visual checkpoint labels use original-media time; transcript timestamps remain
+clip-relative. FFmpeg scene/layout detections are candidate events only. Check
+frames before/at/after each candidate, rebuild the current mapping, and pass
+the stills with compact timestamp/reason metadata as supplementary evidence.
+Never infer a speaker change, silence, timestamp shift, or omitted audio from a
+scene score alone.
 
 ## Media and portability
 

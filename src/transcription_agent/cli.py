@@ -55,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Additional formats: json,srt,vtt,zip (default: markdown only)",
     )
+    transcribe.add_argument(
+        "--no-speaker-normalization",
+        action="store_true",
+        help="Skip the visual-evidence label-only normalization pass",
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -83,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
         settings = replace(settings, model=args.model)
     if args.proxy:
         settings = replace(settings, proxy=args.proxy)
+    if args.no_speaker_normalization:
+        settings = replace(settings, speaker_normalization_enabled=False)
     export_formats = (
         tuple(f.strip().lower() for f in args.formats.split(",") if f.strip())
         if args.formats

@@ -19,9 +19,19 @@ Use the single canonical prompt at [src/transcription_agent/prompt-transcription
 
 ## Workflow and quality gate
 
-Use the repository CLI and utilities rather than a one-off transcription script: [media.py](../../../src/transcription_agent/media.py) for probing/chunks, [chunking.py](../../../src/transcription_agent/chunking.py) for model-aware planning, [orchestrator.py](../../../src/transcription_agent/orchestrator.py) for provider fallback/merge, and [exporters.py](../../../src/transcription_agent/exporters.py) for Markdown. Keep dynamic, model-aware chunking as the default; use a fixed duration only when the user explicitly requests one or a focused retry needs a bounded interval. Preserve the original chunk offset when merging.
+Use the repository CLI and utilities rather than a one-off transcription script: [media.py](../../../src/transcription_agent/media.py) for probing/chunks and bounded visual checkpoints, [chunking.py](../../../src/transcription_agent/chunking.py) for model-aware planning, [orchestrator.py](../../../src/transcription_agent/orchestrator.py) for provider fallback/merge, and [exporters.py](../../../src/transcription_agent/exporters.py) for Markdown. Keep dynamic, model-aware chunking as the default; use a fixed duration only when the user explicitly requests one or a focused retry needs a bounded interval. Preserve the original chunk offset when merging.
 
 For every chunk, inspect the audio and multiple current frames across each temporal portion. Rebuild the name-to-tile mapping whenever a participant joins, leaves, moves, or screen sharing starts/stops. During screen sharing, participant tiles may be in a sidebar or compact strip: follow every explicit speaker cue available in the current layout, regardless of color, brightness, contrast, shape, size, or position. This includes a colored/dark/light border or highlight, changed tile background, avatar illumination or ring, speaking indicator, label, or equivalent marker on any side, in the center, around an avatar, or around the tile; use the displayed name on the identified tile. Do not treat shared-screen text, faces, or stale tile positions as attribution evidence. A status icon/badge can be valid evidence when its platform meaning identifies the speaker; reject it only when the frame shows that it is unrelated to speaker activity. The visual pass supplies names and attribution; it must not replace or shorten the word-for-word audio pass.
+
+When visual checkpoints are available, their labels must state original-media
+timestamps, while transcript timestamps remain clip-relative. Inspect frames
+before, at, and after each FFmpeg candidate event and compare the current
+layout, participant membership, sidebar/grid position, screen-sharing state,
+and active-speaker cue. Treat scene detection as a candidate, not proof of a
+speaker change: it may miss subtle cues and must never cause audio to be
+dropped, marked silent, or shifted without checking the media. Pass the stills
+and compact timestamp/reason metadata as supplementary evidence alongside the
+video; keep the canonical prompt's lossless audio requirements authoritative.
 
 Before accepting a provider response, run a lossless format check:
 
@@ -35,6 +45,17 @@ Before accepting a provider response, run a lossless format check:
 - Do not launch a parallel or identical retry while the previous provider attempt is live. A local timeout or process kill may not cancel upstream work or billing; stop once when authorized or let the bounded failure resolve before changing one diagnostic variable.
 
 After merging, run the mandatory frame-based speaker-name normalization pass. Treat provider-produced names as candidate aliases; inspect frames at their turns and nearby moments, then map visually confirmed variants (phonetic/ASR or OCR errors, clipping, and company suffixes) to one canonical displayed name across all chunks. Normalize only speaker-label prefixes when frame evidence supports it; do not rewrite spoken words. If frames cannot establish the identity or exact spelling, use `SpeakerN` instead of guessing. Finally check chronological order, timestamp bounds, duplicate retry overlap, embedded markers, unexplained gaps, and the requested media-adjacent Markdown output.
+
+The CLI and GUI implement this as a bounded label-only vision pass after the
+audio/video pass: the provider receives the transcript's timestamps and labels
+plus one still at each observed label's first occurrence (falling back to
+checkpoint stills only when direct frames are unavailable) and must return only
+a strict JSON mapping. Apply a mapping only between labels already present and
+only to `speaker` fields; verify that words, timestamps, segment count, and
+ordering are unchanged. If the pass fails or returns invalid/low-confidence
+JSON, keep the pre-normalization transcript and record the failure. Set
+`TRANSCRIPTION_SPEAKER_NORMALIZATION=false` or use the CLI
+`--no-speaker-normalization` switch to skip this optional pass.
 
 When regenerating or comparing a transcript, never overwrite an existing transcript implicitly. Use a distinct output name, verify the old file's hash before and after the run, and keep all recheck clips/transcripts disposable and outside Git.
 

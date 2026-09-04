@@ -9,6 +9,7 @@ import pytest
 import transcription_agent.orchestrator as orch
 from transcription_agent.config import Settings
 from transcription_agent.costs import Usage
+from transcription_agent.media import VisualCheckpoint
 from transcription_agent.orchestrator import TranscriptionService, parse_segments
 from transcription_agent.providers import ProviderResult
 from transcription_agent.upload_adapters import MediaRef, UploadDeclined
@@ -47,7 +48,11 @@ class _RecordingProvider:
         self.base64_calls = 0
 
     def transcribe_media(
-        self, ref: MediaRef, prompt: str, media_path: str = ""
+        self,
+        ref: MediaRef,
+        prompt: str,
+        media_path: str = "",
+        visual_checkpoints=(),
     ) -> ProviderResult:
         self.url_calls += 1
         if self.remaining_failures > 0:
@@ -55,12 +60,50 @@ class _RecordingProvider:
             raise RuntimeError("provider failed")
         return ProviderResult("[00:00] Speaker 1: ok", Usage(10, 5))
 
-    def transcribe(self, media_path: str, prompt: str) -> ProviderResult:
+    def transcribe(
+        self, media_path: str, prompt: str, visual_checkpoints=()
+    ) -> ProviderResult:
         self.base64_calls += 1
         if self.remaining_failures > 0:
             self.remaining_failures -= 1
             raise RuntimeError("provider failed")
         return ProviderResult("[00:00] Speaker 1: ok", Usage(20, 5))
+
+
+class _NormalizingProvider(_RecordingProvider):
+    def __init__(self) -> None:
+        super().__init__("polza")
+        self.normalization_calls = 0
+        self.normalization_visuals = ()
+
+    def transcribe_media(
+        self,
+        ref: MediaRef,
+        prompt: str,
+        media_path: str = "",
+        visual_checkpoints=(),
+    ) -> ProviderResult:
+        return ProviderResult(
+            "[00:01] Variant: exact words\n[00:03] Canonical: more words",
+            Usage(10, 5),
+        )
+
+    def normalize_speaker_labels(
+        self, transcript_text, labels, visual_checkpoints=()
+    ) -> ProviderResult:
+        self.normalization_calls += 1
+        self.normalization_visuals = visual_checkpoints
+        return ProviderResult(
+            '{"confidence": 0.95, "mapping": {"Variant": "Canonical"}}',
+            Usage(2, 1),
+        )
+
+
+class _InvalidNormalizingProvider(_NormalizingProvider):
+    def normalize_speaker_labels(
+        self, transcript_text, labels, visual_checkpoints=()
+    ) -> ProviderResult:
+        return ProviderResult("not-json", Usage(3, 4))
 
 
 def _settings(tmp_path: Path, order: tuple[str, ...]) -> Settings:
@@ -171,6 +214,74 @@ def test_hung_upload_times_out_and_falls_back_to_base64(
     assert provider.url_calls == 0
     assert transcript.provider == "polza"
     assert any("upload timeout" in note for note in transcript.notes)
+
+
+def test_visual_label_normalization_changes_only_speaker_labels(
+    tmp_path: Path, monkeypatch
+) -> None:
+    provider = _NormalizingProvider()
+    _patch(monkeypatch, {"polza": _RecordingAdapter("ok")}, {"polza": provider})
+    frame = tmp_path / "checkpoint.png"
+    frame.write_bytes(b"png")
+    monkeypatch.setattr(
+        orch,
+        "extract_visual_checkpoints",
+        lambda path, offset, output_dir: (
+            VisualCheckpoint(1.0, offset + 1.0, frame, "periodic layout checkpoint"),
+        ),
+    )
+    monkeypatch.setattr(
+        orch,
+        "extract_label_checkpoints",
+        lambda source, label_times, output_dir: (
+            VisualCheckpoint(61.0, 61.0, frame, "speaker-label occurrence: Variant"),
+        ),
+    )
+    service = TranscriptionService(_settings(tmp_path, ("polza",)))
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"fake")
+
+    transcript = service.transcribe_clips(str(clip), [(60.0, str(clip))])
+
+    assert provider.normalization_calls == 1
+    assert provider.normalization_visuals[0].reason.startswith(
+        "speaker-label occurrence:"
+    )
+    assert [(s.start, s.speaker, s.text) for s in transcript.segments] == [
+        (61.0, "Canonical", "exact words"),
+        (63.0, "Canonical", "more words"),
+    ]
+    assert transcript.metadata["speaker_normalization"]["status"] == "applied"
+    assert transcript.metadata["usage"]["output_tokens"] == 6
+
+
+def test_failed_label_normalization_preserves_transcript_and_records_usage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    provider = _InvalidNormalizingProvider()
+    _patch(monkeypatch, {"polza": _RecordingAdapter("ok")}, {"polza": provider})
+    frame = tmp_path / "checkpoint.png"
+    frame.write_bytes(b"png")
+    monkeypatch.setattr(
+        orch,
+        "extract_visual_checkpoints",
+        lambda path, offset, output_dir: (
+            VisualCheckpoint(1.0, offset + 1.0, frame, "periodic layout checkpoint"),
+        ),
+    )
+    service = TranscriptionService(_settings(tmp_path, ("polza",)))
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"fake")
+
+    transcript = service.transcribe_clips(str(clip), [(60.0, str(clip))])
+
+    assert [(s.start, s.speaker, s.text) for s in transcript.segments] == [
+        (61.0, "Variant", "exact words"),
+        (63.0, "Canonical", "more words"),
+    ]
+    assert transcript.metadata["speaker_normalization"]["status"] == "failed"
+    assert transcript.metadata["usage"]["output_tokens"] == 9
+    assert any("speaker-label normalization" in note for note in transcript.notes)
 
 
 def test_parse_segments_splits_collapsed_timestamped_line_without_loss() -> None:

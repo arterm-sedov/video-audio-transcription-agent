@@ -1,8 +1,10 @@
 """Portable media probing and FFmpeg chunk creation."""
 
 import json
+import re
 import shutil
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +17,16 @@ class MediaInfo:
     duration: float
     has_audio: bool
     has_video: bool
+
+
+@dataclass(frozen=True, slots=True)
+class VisualCheckpoint:
+    """A still frame with chunk-relative and original-media timestamps."""
+
+    relative_seconds: float
+    original_seconds: float
+    path: Path
+    reason: str
 
 
 def ffmpeg_binary() -> str:
@@ -90,8 +102,12 @@ def create_chunks(
     destination.mkdir(parents=True, exist_ok=True)
     if provider and model:
         # chunk_seconds <= 0 means "auto from model context window"
-        auto = None if chunk_seconds is not None and chunk_seconds <= 0 else chunk_seconds
-        chunks = plan_chunks_for_model(info.duration, provider, model, chunk_seconds=auto)
+        auto = (
+            None if chunk_seconds is not None and chunk_seconds <= 0 else chunk_seconds
+        )
+        chunks = plan_chunks_for_model(
+            info.duration, provider, model, chunk_seconds=auto
+        )
     else:
         chunks = plan_chunks(info.duration, chunk_seconds=chunk_seconds)
     ffmpeg = ffmpeg_binary()
@@ -133,3 +149,230 @@ def create_chunks(
         subprocess.run(command, check=True)
         result.append((chunk, output))
     return info, tuple(result)
+
+
+_SCENE_TIME = re.compile(r"pts_time:(?P<seconds>[0-9]+(?:\.[0-9]+)?)")
+_SIGNALSTAT = re.compile(
+    r"lavfi\.signalstats\.(?P<name>YMIN|YMAX)=(?P<value>[0-9]+(?:\.[0-9]+)?)"
+)
+
+
+def _scene_candidates(path: Path, threshold: float = 0.08) -> tuple[float, ...]:
+    """Return FFmpeg scene-change candidates for one video chunk."""
+    ffmpeg = ffmpeg_binary()
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-i",
+            str(path),
+            "-vf",
+            f"select='gt(scene,{threshold})',showinfo",
+            "-an",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    values = [
+        float(match.group("seconds")) for match in _SCENE_TIME.finditer(result.stderr)
+    ]
+    return tuple(sorted(set(values)))
+
+
+def _is_uniform_black_frame(path: Path) -> bool:
+    """Detect an all-black extraction artifact without rejecting dark UI cues."""
+    ffmpeg = ffmpeg_binary()
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-vf",
+            "signalstats,metadata=print:file=-",
+            "-an",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    values = {
+        match.group("name"): float(match.group("value"))
+        for match in _SIGNALSTAT.finditer(result.stdout)
+    }
+    # 16 is the black level in limited-range YUV. Keep a small tolerance for
+    # encoder rounding, and require both extrema to avoid rejecting dark frames.
+    return values.get("YMIN", 255.0) <= 17.0 and values.get("YMAX", 255.0) <= 17.0
+
+
+def _extract_checkpoint(
+    source: Path,
+    relative_seconds: float,
+    original_offset: float,
+    output: Path,
+    reason: str,
+) -> VisualCheckpoint | None:
+    """Extract one usable still without treating a dark interface as blank."""
+    subprocess.run(
+        [
+            ffmpeg_binary(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(relative_seconds),
+            "-i",
+            str(source),
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=1280:-2",
+            "-y",
+            str(output),
+        ],
+        check=True,
+    )
+    if not output.is_file():
+        return None
+    try:
+        is_black = _is_uniform_black_frame(output)
+    except (OSError, subprocess.CalledProcessError):
+        is_black = False
+    if is_black:
+        output.unlink(missing_ok=True)
+        return None
+    return VisualCheckpoint(
+        relative_seconds, original_offset + relative_seconds, output, reason
+    )
+
+
+def extract_visual_checkpoints(
+    path: str | Path,
+    original_offset: float,
+    output_dir: str | Path,
+    *,
+    max_checkpoints: int = 12,
+) -> tuple[VisualCheckpoint, ...]:
+    """Extract periodic and scene-change stills as multimodal evidence.
+
+    Checkpoints are hints only. The chunk's video/audio remains authoritative
+    for spoken words; original timestamps prevent visual mapping drift.
+    """
+    source = Path(path)
+    info = probe(source)
+    if not info.has_video or info.duration <= 0 or max_checkpoints <= 0:
+        return ()
+    periodic = {
+        0.0,
+        max(0.0, info.duration / 2),
+        max(0.0, info.duration - 0.5),
+    }
+    if len(periodic) > max_checkpoints:
+        periodic_values = sorted(periodic)
+        indexes = (
+            {
+                round(index * (len(periodic_values) - 1) / (max_checkpoints - 1))
+                for index in range(max_checkpoints)
+            }
+            if max_checkpoints > 1
+            else {0}
+        )
+        periodic = {periodic_values[index] for index in sorted(indexes)}
+    try:
+        candidates = _scene_candidates(source)
+    except (OSError, subprocess.CalledProcessError):
+        candidates = ()
+    usable_candidates = sorted(
+        {max(0.0, min(info.duration - 0.5, value)) for value in candidates}
+    )
+    # A scene candidate is useful only with context. Keep a bounded number of
+    # well-spaced candidates and take stills before, at, and after each one.
+    event_budget = max(0, (max_checkpoints - len(periodic)) // 3)
+    if event_budget and usable_candidates:
+        if len(usable_candidates) <= event_budget:
+            selected_candidates = usable_candidates
+        elif event_budget == 1:
+            selected_candidates = [usable_candidates[len(usable_candidates) // 2]]
+        else:
+            indexes = {
+                round(index * (len(usable_candidates) - 1) / (event_budget - 1))
+                for index in range(event_budget)
+            }
+            selected_candidates = [
+                usable_candidates[index] for index in sorted(indexes)
+            ]
+    else:
+        selected_candidates = []
+    event_times = {
+        max(0.0, min(info.duration - 0.5, candidate + delta))
+        for candidate in selected_candidates
+        for delta in (-0.75, 0.0, 0.75)
+    }
+    times = sorted(periodic | event_times)
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    checkpoints = []
+    for index, relative in enumerate(times):
+        output = destination / f"{source.stem}_visual_{index:02d}.png"
+        reason = "periodic layout checkpoint"
+        if any(abs(relative - candidate) < 0.01 for candidate in candidates):
+            reason = "FFmpeg scene-change candidate"
+        checkpoint = _extract_checkpoint(
+            source, relative, original_offset, output, reason
+        )
+        if checkpoint is not None:
+            checkpoints.append(checkpoint)
+    return tuple(checkpoints)
+
+
+def extract_label_checkpoints(
+    path: str | Path,
+    label_times: Mapping[str, float],
+    output_dir: str | Path,
+    *,
+    max_checkpoints: int = 24,
+) -> tuple[VisualCheckpoint, ...]:
+    """Capture one still at each observed label's original-media timestamp.
+
+    These frames are only for the label-only vision pass. The transcription
+    continues to derive words and timestamps from the media chunks.
+    """
+    source = Path(path)
+    info = probe(source)
+    if not info.has_video or info.duration <= 0 or max_checkpoints <= 0:
+        return ()
+    items = sorted(label_times.items(), key=lambda item: (item[1], item[0]))
+    if len(items) > max_checkpoints:
+        indexes = (
+            {
+                round(index * (len(items) - 1) / (max_checkpoints - 1))
+                for index in range(max_checkpoints)
+            }
+            if max_checkpoints > 1
+            else {0}
+        )
+        items = [items[index] for index in sorted(indexes)]
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    checkpoints = []
+    for index, (label, timestamp) in enumerate(items):
+        relative = max(0.0, min(info.duration - 0.5, timestamp))
+        checkpoint = _extract_checkpoint(
+            source,
+            relative,
+            0.0,
+            destination / f"{source.stem}_label_{index:02d}.png",
+            f"speaker-label occurrence: {label}",
+        )
+        if checkpoint is not None:
+            checkpoints.append(checkpoint)
+    return tuple(checkpoints)

@@ -26,6 +26,7 @@ class Settings:
     openrouter_proxy: str = ""
     gemini_proxy: str = ""
     upload_timeout_seconds: float = 30.0
+    speaker_normalization_enabled: bool = True
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = ".env") -> "Settings":
@@ -62,6 +63,10 @@ class Settings:
             upload_timeout_seconds=float(
                 os.getenv("TRANSCRIPTION_UPLOAD_TIMEOUT", "30") or "30"
             ),
+            speaker_normalization_enabled=os.getenv(
+                "TRANSCRIPTION_SPEAKER_NORMALIZATION", "true"
+            ).lower()
+            in {"1", "true", "yes", "on"},
         )
 
     def provider_proxy(self, provider: str) -> str:

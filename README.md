@@ -73,6 +73,8 @@ uv run transcription-agent models --provider gemini
 
 The default provider order is `polza,openrouter,gemini`, so Polza is the default provider and Gemini is tried last. The GUI exposes the same provider and model selectors; the model list is provider-aware (direct Gemini shows only Gemini models). The agent splits long media into temporary chunks, preserves audio and video, merges timestamps, and writes all outputs to `TRANSCRIPTION_OUTPUT_DIR`. Chunking is model-driven by default: `TRANSCRIPTION_CHUNK_SECONDS=0` sizes each chunk from the model's context window and worst-case token-per-second rate, so a larger-window model yields larger chunks automatically (set a positive value for fixed-size chunks). The planner never drops below a 300-second floor, so a 300-second split is an explicit override or a tiny-window clamp, not the default. A Gemini ~1M-token window typically covers a 25-minute file in one chunk.
 
+After the audio/video pass, CLI and GUI can run a label-only visual normalization request using a bounded still at each observed label's first timestamp (with collected scene/layout checkpoint stills as fallback). It returns a strict mapping between observed labels and can change only speaker labels; failures leave words and timestamps unchanged. Set `TRANSCRIPTION_SPEAKER_NORMALIZATION=false` or pass `--no-speaker-normalization` to disable it.
+
 CLI output control: by default only the Markdown transcript is written. Add other formats explicitly:
 
 ```bash
@@ -102,6 +104,8 @@ The prompt requires:
 - every audible word by every speaker, without summarization, cleanup, or omission;
 - chronological speaker turns;
 - timestamps relative to each clip;
+- supplementary visual checkpoints with original-media times around periodic and
+  FFmpeg scene-change candidates, while video/audio remains authoritative;
 - any active-speaker cue: border, highlight, outline, focus box, or equivalent;
 - a fresh visual/name mapping for each temporal portion, including screen-sharing layouts;
 - exactly one hard-newline-separated turn per timestamp, with no embedded timestamps;

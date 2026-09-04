@@ -1,6 +1,7 @@
 """Optional Gradio interface for Hugging Face Spaces and local use."""
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from .config import Settings
@@ -23,18 +24,17 @@ def transcribe_upload(
     prompt: str,
     proxy: str,
     diarization: bool,
+    speaker_normalization: bool = True,
     progress=None,
 ):
     settings = Settings.from_env()
-    settings = settings.__class__(
+    settings = replace(
+        settings,
         provider_order=(provider.strip(),),
         model=model.strip() or settings.model,
-        chunk_seconds=settings.chunk_seconds,
-        output_dir=settings.output_dir,
-        database_path=settings.database_path,
         diarization_enabled=diarization,
-        max_output_tokens=settings.max_output_tokens,
-        proxy=proxy.strip(),
+        speaker_normalization_enabled=speaker_normalization,
+        proxy=proxy.strip() or settings.proxy,
     )
     settings.validate()
     registry = JobRegistry(settings.database_path)
@@ -121,12 +121,24 @@ def build_demo():
         diarization = gr.Checkbox(
             value=True, label="Use voice diarization when available"
         )
+        speaker_normalization = gr.Checkbox(
+            value=settings.speaker_normalization_enabled,
+            label="Normalize speaker labels using visual evidence",
+        )
         run = gr.Button("Transcribe", variant="primary")
         transcript = gr.Markdown()
         outputs = gr.Files(label="Downloads")
         run.click(
             transcribe_upload,
-            inputs=[upload, provider, model, prompt, proxy, diarization],
+            inputs=[
+                upload,
+                provider,
+                model,
+                prompt,
+                proxy,
+                diarization,
+                speaker_normalization,
+            ],
             outputs=[transcript, outputs],
             api_visibility="private",
             concurrency_limit=1,

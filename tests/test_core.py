@@ -36,6 +36,56 @@ def test_merge_offsets_and_sorts_segments() -> None:
     assert transcript.segments[1].start == 300
 
 
+def test_merge_segments_removes_only_exact_overlap_duplicates() -> None:
+    transcript = merge_segments(
+        "meeting.mp4",
+        [
+            (0, [Segment(295, 300, "A", "same words")]),
+            (295, [Segment(0, 4, "A", "same words"), Segment(4, 5, "B", "new")]),
+        ],
+        overlap_seconds=5,
+    )
+
+    assert [
+        (segment.start, segment.speaker, segment.text)
+        for segment in transcript.segments
+    ] == [
+        (295, "A", "same words"),
+        (299, "B", "new"),
+    ]
+
+
+def test_merge_segments_joins_only_repeated_boundary_phrase() -> None:
+    transcript = merge_segments(
+        "meeting.mp4",
+        [
+            (0, [Segment(280, 300, "A", "we need to keep every word")]),
+            (295, [Segment(0, 5, "A", "every word across the boundary")]),
+        ],
+        overlap_seconds=5,
+    )
+
+    assert [(segment.start, segment.text) for segment in transcript.segments] == [
+        (280, "we need to keep every word across the boundary"),
+    ]
+
+
+def test_merge_segments_keeps_nonmatching_boundary_turns() -> None:
+    transcript = merge_segments(
+        "meeting.mp4",
+        [
+            (0, [Segment(280, 300, "A", "before boundary")]),
+            (295, [Segment(0, 5, "A", "new words, not a repeat")]),
+        ],
+        overlap_seconds=5,
+    )
+
+    assert [segment.text for segment in transcript.segments] == [
+        "before boundary",
+        "new words, not a repeat",
+    ]
+
+
 def test_exporters_write_all_formats(tmp_path: Path) -> None:
     transcript = merge_segments(
         "meeting.mp4", [(0, [Segment(0, 1.5, "Speaker 1", "Hello")])]

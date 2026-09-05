@@ -60,6 +60,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip the visual-evidence label-only normalization pass",
     )
+    transcribe.add_argument(
+        "--no-gap-rechecks",
+        action="store_true",
+        help="Skip focused speech-backed omission rechecks",
+    )
     args = parser.parse_args(argv)
     settings = Settings.from_env()
     if args.command == "validate-config":
@@ -90,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
         settings = replace(settings, proxy=args.proxy)
     if args.no_speaker_normalization:
         settings = replace(settings, speaker_normalization_enabled=False)
+    if args.no_gap_rechecks:
+        settings = replace(settings, gap_rechecks_enabled=False)
     export_formats = (
         tuple(f.strip().lower() for f in args.formats.split(",") if f.strip())
         if args.formats
@@ -107,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             settings.chunk_seconds,
             provider=settings.provider_order[0],
             model=settings.model,
+            overlap_seconds=settings.chunk_overlap_seconds,
         )
         registry.update(job_id, "transcribing")
         transcript = TranscriptionService(settings).transcribe_clips(

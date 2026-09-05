@@ -94,6 +94,8 @@ def create_chunks(
     chunk_seconds: int = 300,
     provider: str | None = None,
     model: str | None = None,
+    overlap_seconds: float = 0.0,
+    floor_seconds: int = 300,
 ) -> tuple[MediaInfo, tuple[tuple[Chunk, Path], ...]]:
     """Create portable, speech-preserving MP4 chunks using FFmpeg."""
     source = Path(path)
@@ -106,10 +108,20 @@ def create_chunks(
             None if chunk_seconds is not None and chunk_seconds <= 0 else chunk_seconds
         )
         chunks = plan_chunks_for_model(
-            info.duration, provider, model, chunk_seconds=auto
+            info.duration,
+            provider,
+            model,
+            chunk_seconds=auto,
+            floor_seconds=floor_seconds,
+            overlap_seconds=overlap_seconds,
         )
     else:
-        chunks = plan_chunks(info.duration, chunk_seconds=chunk_seconds)
+        chunks = plan_chunks(
+            info.duration,
+            chunk_seconds=chunk_seconds,
+            floor_seconds=floor_seconds,
+            overlap_seconds=overlap_seconds,
+        )
     ffmpeg = ffmpeg_binary()
     result = []
     for chunk in chunks:
@@ -149,6 +161,85 @@ def create_chunks(
         subprocess.run(command, check=True)
         result.append((chunk, output))
     return info, tuple(result)
+
+
+def create_interval_clip(
+    source: str | Path, start: float, end: float, output: str | Path
+) -> Path:
+    """Create one bounded, speech-preserving recheck clip from original media."""
+    info = probe(source)
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    duration = max(0.0, end - start)
+    command = [
+        ffmpeg_binary(),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        str(start),
+        "-i",
+        str(source),
+        "-t",
+        str(duration),
+    ]
+    if info.has_video:
+        command.extend(
+            [
+                "-vf",
+                "scale=960:-2,fps=2",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "28",
+            ]
+        )
+    else:
+        command.append("-vn")
+    command.extend(["-c:a", "aac", "-b:a", "96k", "-y", str(destination)])
+    subprocess.run(command, check=True)
+    return destination
+
+
+_SILENCE_DURATION = re.compile(r"silence_duration: (?P<seconds>[0-9]+(?:\.[0-9]+)?)")
+
+
+def speech_seconds(path: str | Path, start: float, end: float) -> float:
+    """Estimate speech-bearing duration with FFmpeg silence detection.
+
+    This is deliberately supporting evidence: it confirms a suspicious sparse
+    turn before a focused recheck, but does not invent transcript boundaries.
+    """
+    duration = max(0.0, end - start)
+    if duration == 0:
+        return 0.0
+    result = subprocess.run(
+        [
+            ffmpeg_binary(),
+            "-hide_banner",
+            "-ss",
+            str(start),
+            "-i",
+            str(path),
+            "-t",
+            str(duration),
+            "-af",
+            "silencedetect=n=-35dB:d=1",
+            "-f",
+            "null",
+            "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    silence = sum(
+        float(match.group("seconds"))
+        for match in _SILENCE_DURATION.finditer(result.stderr)
+    )
+    return max(0.0, duration - silence)
 
 
 _SCENE_TIME = re.compile(r"pts_time:(?P<seconds>[0-9]+(?:\.[0-9]+)?)")

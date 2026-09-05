@@ -27,6 +27,14 @@ class Settings:
     gemini_proxy: str = ""
     upload_timeout_seconds: float = 30.0
     speaker_normalization_enabled: bool = True
+    chunk_overlap_seconds: float = 5.0
+    chunk_launch_interval_seconds: float = 30.0
+    gap_rechecks_enabled: bool = True
+    gap_recheck_min_span_seconds: float = 45.0
+    gap_recheck_max_words_per_second: float = 0.2
+    gap_recheck_padding_seconds: float = 5.0
+    gap_recheck_chunk_seconds: int = 90
+    gap_recheck_max_intervals: int = 3
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = ".env") -> "Settings":
@@ -67,6 +75,29 @@ class Settings:
                 "TRANSCRIPTION_SPEAKER_NORMALIZATION", "true"
             ).lower()
             in {"1", "true", "yes", "on"},
+            chunk_overlap_seconds=float(
+                os.getenv("TRANSCRIPTION_CHUNK_OVERLAP_SECONDS", "5") or "0"
+            ),
+            chunk_launch_interval_seconds=float(
+                os.getenv("TRANSCRIPTION_CHUNK_LAUNCH_INTERVAL_SECONDS", "30") or "0"
+            ),
+            gap_rechecks_enabled=os.getenv("TRANSCRIPTION_GAP_RECHECKS", "true").lower()
+            in {"1", "true", "yes", "on"},
+            gap_recheck_min_span_seconds=float(
+                os.getenv("TRANSCRIPTION_GAP_RECHECK_MIN_SPAN_SECONDS", "45")
+            ),
+            gap_recheck_max_words_per_second=float(
+                os.getenv("TRANSCRIPTION_GAP_RECHECK_MAX_WORDS_PER_SECOND", "0.2")
+            ),
+            gap_recheck_padding_seconds=float(
+                os.getenv("TRANSCRIPTION_GAP_RECHECK_PADDING_SECONDS", "5")
+            ),
+            gap_recheck_chunk_seconds=int(
+                os.getenv("TRANSCRIPTION_GAP_RECHECK_CHUNK_SECONDS", "90")
+            ),
+            gap_recheck_max_intervals=int(
+                os.getenv("TRANSCRIPTION_GAP_RECHECK_MAX_INTERVALS", "3")
+            ),
         )
 
     def provider_proxy(self, provider: str) -> str:
@@ -104,3 +135,25 @@ class Settings:
             raise ValueError("TRANSCRIPTION_MAX_OUTPUT_TOKENS must be positive")
         if self.upload_timeout_seconds < 0:
             raise ValueError("TRANSCRIPTION_UPLOAD_TIMEOUT must not be negative")
+        if self.chunk_overlap_seconds < 0:
+            raise ValueError("TRANSCRIPTION_CHUNK_OVERLAP_SECONDS must not be negative")
+        if self.chunk_launch_interval_seconds < 0:
+            raise ValueError(
+                "TRANSCRIPTION_CHUNK_LAUNCH_INTERVAL_SECONDS must not be negative"
+            )
+        if self.gap_recheck_min_span_seconds <= 0:
+            raise ValueError(
+                "TRANSCRIPTION_GAP_RECHECK_MIN_SPAN_SECONDS must be positive"
+            )
+        if self.gap_recheck_max_words_per_second < 0:
+            raise ValueError(
+                "TRANSCRIPTION_GAP_RECHECK_MAX_WORDS_PER_SECOND must not be negative"
+            )
+        if self.gap_recheck_padding_seconds < 0:
+            raise ValueError(
+                "TRANSCRIPTION_GAP_RECHECK_PADDING_SECONDS must not be negative"
+            )
+        if self.gap_recheck_chunk_seconds not in range(60, 121):
+            raise ValueError("TRANSCRIPTION_GAP_RECHECK_CHUNK_SECONDS must be 60..120")
+        if self.gap_recheck_max_intervals <= 0:
+            raise ValueError("TRANSCRIPTION_GAP_RECHECK_MAX_INTERVALS must be positive")

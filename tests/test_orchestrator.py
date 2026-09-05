@@ -297,3 +297,35 @@ def test_parse_segments_splits_collapsed_timestamped_line_without_loss() -> None
         (33, "Bob", "second words."),
         (37, "Alice", "final words."),
     ]
+
+
+def test_parallel_chunks_merge_in_source_order(tmp_path: Path, monkeypatch) -> None:
+    import time
+    from dataclasses import replace
+
+    class DelayedProvider(_RecordingProvider):
+        def transcribe(self, media_path: str, prompt: str, visual_checkpoints=()):
+            if Path(media_path).name == "first.mp4":
+                time.sleep(0.05)
+            return ProviderResult(
+                "[00:00] Speaker 1: " + Path(media_path).stem,
+                Usage(1, 1),
+            )
+
+    provider = DelayedProvider("polza")
+    _patch(monkeypatch, {"polza": _RecordingAdapter("decline")}, {"polza": provider})
+    monkeypatch.setattr(orch, "extract_visual_checkpoints", lambda *args: ())
+    first, second = tmp_path / "first.mp4", tmp_path / "second.mp4"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    settings = replace(
+        _settings(tmp_path, ("polza",)),
+        chunk_launch_interval_seconds=0,
+        speaker_normalization_enabled=False,
+    )
+
+    transcript = TranscriptionService(settings).transcribe_clips(
+        str(first), [(0.0, str(first)), (300.0, str(second))]
+    )
+
+    assert [segment.text for segment in transcript.segments] == ["first", "second"]

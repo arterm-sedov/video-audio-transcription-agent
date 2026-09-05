@@ -21,6 +21,16 @@ def test_plan_chunks_fixed_seconds_back_compat() -> None:
     ]
 
 
+def test_plan_chunks_adds_bounded_overlap_without_losing_duration() -> None:
+    chunks = plan_chunks(610.0, chunk_seconds=300, overlap_seconds=5)
+
+    assert [(chunk.start, chunk.end) for chunk in chunks] == [
+        (0.0, 300.0),
+        (295.0, 595.0),
+        (590.0, 610.0),
+    ]
+
+
 def test_plan_chunks_single_chunk_when_budget_fits_whole_file() -> None:
     # 1M window, worst-case rate 263 tok/s -> ~3.8k s; 600 s file fits in one chunk
     chunks = plan_chunks(600.0, token_budget=1_000_000)

@@ -36,6 +36,9 @@ and Hugging Face Gradio Spaces.
 - Do not start a parallel or identical retry while a provider attempt is still
   live. Stop it once when authorized or let its bounded failure resolve; a
   client-side timeout/kill may not cancel upstream work or its billing.
+- Main chunks are independent and may be launched concurrently with a bounded
+  stagger. Use a small overlap and merge only a proven repeated word sequence;
+  never discard a non-identical turn merely because it is near a boundary.
 - Keep the canonical prompt as the only prompt resource. A custom `--prompt`
   may add task-specific context only when it preserves the canonical prompt's
   completeness, visual-attribution, and output-format rules.
@@ -171,6 +174,11 @@ deduplicate overlap from the padded retry.
 Do not repeat an identical provider request after a failure. Change a
 diagnostic variable (for example, the affected interval, bounded chunk size,
 transport, or model), or stop and report the unchanged failure.
+
+The quality gate is intentionally narrow: inspect only long, low-word-density
+turns and require voice activity before a padded 60--120 second recheck. A
+recheck replaces an interval only when it proves materially more words there;
+everything outside that interval remains unchanged.
 
 ## Gradio/Hugging Face
 

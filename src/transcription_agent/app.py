@@ -25,6 +25,7 @@ def transcribe_upload(
     proxy: str,
     diarization: bool,
     speaker_normalization: bool = True,
+    gap_rechecks: bool = True,
     progress=None,
 ):
     settings = Settings.from_env()
@@ -34,6 +35,7 @@ def transcribe_upload(
         model=model.strip() or settings.model,
         diarization_enabled=diarization,
         speaker_normalization_enabled=speaker_normalization,
+        gap_rechecks_enabled=gap_rechecks,
         proxy=proxy.strip() or settings.proxy,
     )
     settings.validate()
@@ -52,6 +54,7 @@ def transcribe_upload(
             settings.chunk_seconds,
             provider=settings.provider_order[0],
             model=settings.model,
+            overlap_seconds=settings.chunk_overlap_seconds,
         )
         registry.update(job_id, "transcribing")
         transcript = TranscriptionService(settings).transcribe_clips(
@@ -125,6 +128,10 @@ def build_demo():
             value=settings.speaker_normalization_enabled,
             label="Normalize speaker labels using visual evidence",
         )
+        gap_rechecks = gr.Checkbox(
+            value=settings.gap_rechecks_enabled,
+            label="Repair speech-backed omissions with focused rechecks",
+        )
         run = gr.Button("Transcribe", variant="primary")
         transcript = gr.Markdown()
         outputs = gr.Files(label="Downloads")
@@ -138,6 +145,7 @@ def build_demo():
                 proxy,
                 diarization,
                 speaker_normalization,
+                gap_rechecks,
             ],
             outputs=[transcript, outputs],
             api_visibility="private",

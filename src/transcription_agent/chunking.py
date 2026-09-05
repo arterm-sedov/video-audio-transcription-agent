@@ -1,6 +1,5 @@
 """Deterministic chunk planning independent of media backend."""
 
-import math
 from dataclasses import dataclass
 
 try:
@@ -28,8 +27,9 @@ def plan_chunks(
     token_budget: int | None = None,
     floor_seconds: int = FLOOR_SECONDS,
     prompt_tokens: int = 512,
+    overlap_seconds: float = 0.0,
 ) -> tuple[Chunk, ...]:
-    """Return contiguous, non-overlapping chunks covering the full duration.
+    """Return chunks covering the full duration with an optional bounded overlap.
 
     Chunk size is chosen from (in priority order):
     1. ``chunk_seconds`` when explicitly provided and positive (back-compat).
@@ -44,6 +44,8 @@ def plan_chunks(
         raise ValueError("duration must not be negative")
     if duration == 0:
         return ()
+    if overlap_seconds < 0:
+        raise ValueError("overlap_seconds must not be negative")
     if chunk_seconds is not None and chunk_seconds > 0:
         seconds = chunk_seconds
     elif token_budget:
@@ -52,11 +54,20 @@ def plan_chunks(
     else:
         seconds = FLOOR_SECONDS
     seconds = max(floor_seconds, seconds)
-    count = math.ceil(duration / seconds)
-    return tuple(
-        Chunk(i, i * seconds, min((i + 1) * seconds, duration))
-        for i in range(count)
-    )
+    if overlap_seconds >= seconds:
+        raise ValueError("overlap_seconds must be smaller than chunk duration")
+    step = seconds - overlap_seconds
+    chunks = []
+    start = 0.0
+    index = 0
+    while start < duration:
+        end = min(start + seconds, duration)
+        chunks.append(Chunk(index, start, end))
+        if end >= duration:
+            break
+        start += step
+        index += 1
+    return tuple(chunks)
 
 
 def plan_chunks_for_model(
@@ -66,11 +77,20 @@ def plan_chunks_for_model(
     *,
     chunk_seconds: int | None = None,
     floor_seconds: int = FLOOR_SECONDS,
+    overlap_seconds: float = 0.0,
 ) -> tuple[Chunk, ...]:
     """Plan chunks from the model's live context window when no fixed size given."""
     if chunk_seconds is not None and chunk_seconds > 0:
         return plan_chunks(
-            duration, chunk_seconds=chunk_seconds, floor_seconds=floor_seconds
+            duration,
+            chunk_seconds=chunk_seconds,
+            floor_seconds=floor_seconds,
+            overlap_seconds=overlap_seconds,
         )
     window = resolve_context_length(provider, model)
-    return plan_chunks(duration, token_budget=window, floor_seconds=floor_seconds)
+    return plan_chunks(
+        duration,
+        token_budget=window,
+        floor_seconds=floor_seconds,
+        overlap_seconds=overlap_seconds,
+    )

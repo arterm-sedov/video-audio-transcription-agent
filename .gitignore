@@ -10,6 +10,9 @@ __pycache__/
 *.egg-info/
 .gradio/
 .cache/
+.playwright-cli/
+.tmp/
+.tmp_*.py
 dist/
 build/
 *.log

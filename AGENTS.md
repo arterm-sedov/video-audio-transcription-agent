@@ -156,6 +156,9 @@ scene score alone.
 - Prefer FFmpeg on `PATH`; fall back to the bundled `imageio-ffmpeg` binary.
 - Use PyAV probing when `ffprobe` is unavailable.
 - Temporary chunks belong under the configured output directory and must not be committed.
+- Put one-off diagnostics and scratch scripts under the ignored `.tmp/` directory
+  (legacy root `.tmp_*.py` files are ignored too); put reusable helpers under
+  the repository's source or test tree and document their contract.
 - Preserve audio when creating video chunks.
 
 ## Transcript gap verification
